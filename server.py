@@ -340,6 +340,19 @@ def get_desktop_env() -> dict[str, str]:
     runtime_dir = env.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
     env["XDG_RUNTIME_DIR"] = runtime_dir
 
+    # systemd --user omits /usr/games and user/flatpak bin dirs from default PATH
+    path_parts = [p for p in env.get("PATH", "").split(":") if p]
+    for extra in (
+        str(Path.home() / ".local/bin"),
+        "/usr/local/games",
+        "/usr/games",
+        str(Path.home() / ".local/share/flatpak/exports/bin"),
+        "/var/lib/flatpak/exports/bin",
+    ):
+        if extra not in path_parts:
+            path_parts.append(extra)
+    env["PATH"] = ":".join(path_parts)
+
     if not env.get("WAYLAND_DISPLAY"):
         rt = Path(runtime_dir)
         for sock_name in ("wayland-0", "wayland-1"):
