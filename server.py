@@ -8,6 +8,7 @@ import mimetypes
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -76,6 +77,17 @@ _config_lock = threading.Lock()
 _weather_lock = threading.Lock()
 _weather_cache: dict[str, Any] = {"timestamp": 0.0, "key": None, "data": None}
 _icon_cache: dict[str, Path | None] = {}
+_launched_lock = threading.Lock()
+_launched_pids: dict[str, list[int]] = {}
+
+PROTECTED_PROCESS_MARKERS = (
+    KIOSK_PROFILE_MARKER,
+    "pi-tv-ui/server.py",
+    "labwc",
+    "wf-panel-pi",
+    "pcmanfm-pi",
+    "systemd",
+)
 
 
 def load_config() -> dict[str, Any]:
@@ -390,6 +402,309 @@ def get_system_status() -> dict[str, Any]:
     }
 
 
+def pid_is_alive(pid: int) -> bool:
+    if pid <= 1:
+        return False
+    stat_path = Path(f"/proc/{pid}/stat")
+    if not stat_path.is_file():
+        return False
+    try:
+        # Ignore zombie processes
+        text = stat_path.read_text(encoding="utf-8", errors="ignore")
+        rparen = text.rfind(")")
+        if rparen != -1 and len(text) > rparen + 2 and text[rparen + 2] == "Z":
+            return False
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def get_proc_cmdline(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+        return raw.replace(b"\x00", b" ").decode("utf-8", errors="ignore").strip()
+    except Exception:
+        return ""
+
+
+def is_protected_pid(pid: int) -> bool:
+    if pid <= 1 or pid == os.getpid():
+        return True
+    try:
+        st = Path(f"/proc/{pid}").stat()
+        if st.st_uid != os.getuid():
+            return True
+    except Exception:
+        return True
+    cmd = get_proc_cmdline(pid)
+    return any(marker in cmd for marker in PROTECTED_PROCESS_MARKERS)
+
+
+def prune_launched_pids() -> dict[str, list[int]]:
+    with _launched_lock:
+        cleaned: dict[str, list[int]] = {}
+        for item_id, pids in _launched_pids.items():
+            alive = [p for p in pids if pid_is_alive(p)]
+            if alive:
+                cleaned[item_id] = alive
+        _launched_pids.clear()
+        _launched_pids.update(cleaned)
+        return {k: list(v) for k, v in cleaned.items()}
+
+
+def _item_match_tokens(item: dict[str, Any]) -> set[str]:
+    tokens: set[str] = set()
+    for field in ("id", "name", "icon"):
+        val = str(item.get(field) or "").strip()
+        if val and not val.startswith("/"):
+            tokens.add(val.lower())
+    cmd = item.get("command") or []
+    if cmd:
+        exe = Path(cmd[0]).name.lower()
+        tokens.add(exe)
+        for arg in cmd[1:]:
+            if arg.startswith("--class="):
+                tokens.add(arg.split("=", 1)[1].strip().lower())
+            elif arg.startswith("--app-id="):
+                app_id = arg.split("=", 1)[1].strip().lower()
+                tokens.add(app_id)
+                tokens.add(f"crx_{app_id}")
+            elif arg.endswith(".py"):
+                tokens.add(Path(arg).stem.lower())
+    # Friendly aliases for well-known Wayland app_ids
+    aliases = {
+        "chromium": {"chromium-browser", "chromium"},
+        "firefox": {"firefox", "firefox-esr"},
+        "terminal": {"x-terminal-emulator", "lxterminal", "foot", "xfce4-terminal"},
+        "quake": {"quakespasm", "quakespasm_aarch64"},
+        "war2": {"dosbox"},
+        "mission-center": {"io.missioncenter.missioncenter", "missioncenter"},
+    }
+    tokens.update(aliases.get(str(item.get("id", "")).lower(), set()))
+    return tokens
+
+
+def _match_window_to_item(app_id: str, title: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+    aid = app_id.lower().strip()
+    ttl = title.lower().strip()
+    # 1. Exact class / app_id match (highest priority for webapps & native apps)
+    for item in items:
+        tokens = _item_match_tokens(item)
+        if aid and aid in tokens:
+            # Disambiguate chromium webapps by title if generic chromium-browser
+            if aid in ("chromium", "chromium-browser") and item.get("id") != "chromium":
+                continue
+            return item
+    # 2. Substring match on app_id or title for webapps/games
+    for item in items:
+        item_name = str(item.get("name", "")).lower()
+        item_id = str(item.get("id", "")).lower()
+        if aid and (item_id in aid or aid in item_id):
+            return item
+        if item_name and len(item_name) >= 4 and item_name in ttl:
+            return item
+    return None
+
+
+def _find_pid_for_window(app_id: str, item_id: str | None, tracked: dict[str, list[int]]) -> int | None:
+    if item_id and tracked.get(item_id):
+        return tracked[item_id][-1]
+    aid = app_id.lower().strip()
+    if not aid:
+        return None
+    uid = os.getuid()
+    candidates: list[int] = []
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        pid = int(entry.name)
+        if is_protected_pid(pid):
+            continue
+        try:
+            if entry.stat().st_uid != uid:
+                continue
+        except Exception:
+            continue
+        cmd = get_proc_cmdline(pid).lower()
+        if not cmd:
+            continue
+        # Match binary or --class argument
+        if aid in cmd:
+            candidates.append(pid)
+    return candidates[-1] if candidates else None
+
+
+def get_running_apps() -> dict[str, Any]:
+    cfg = load_config()
+    tv_title = (cfg.get("title") or "Pi TV").strip().lower()
+    all_items = [item for sec in cfg.get("sections", []) for item in sec.get("items", [])]
+    items_by_id = {str(it.get("id")): it for it in all_items}
+    tracked = prune_launched_pids()
+
+    has_wlrctl = bool(shutil.which("wlrctl"))
+    windows: list[dict[str, Any]] = []
+    running_item_ids: set[str] = set()
+    matched_item_ids: set[str] = set()
+
+    if has_wlrctl:
+        try:
+            out = subprocess.check_output(
+                ["wlrctl", "toplevel", "list"],
+                env=get_desktop_env(),
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=2.0,
+            )
+            for idx, raw_line in enumerate(out.splitlines()):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if ": " in line:
+                    app_id, title = line.split(": ", 1)
+                elif ":" in line:
+                    app_id, title = line.split(":", 1)
+                else:
+                    app_id, title = line, line
+                app_id = app_id.strip()
+                title = title.strip()
+                ttl_low = title.lower()
+
+                # Exclude the Pi TV kiosk window itself
+                if (
+                    ttl_low == tv_title
+                    or ttl_low.startswith(f"{tv_title} - ")
+                    or ttl_low.startswith(f"{tv_title} — ")
+                    or "127.0.0.1:8787" in ttl_low
+                ):
+                    continue
+
+                matched = _match_window_to_item(app_id, title, all_items)
+                item_id = str(matched["id"]) if matched else None
+                if item_id:
+                    running_item_ids.add(item_id)
+                    matched_item_ids.add(item_id)
+
+                display_name = (
+                    str(matched["name"])
+                    if matched
+                    else re.sub(r"[-_]+", " ", app_id.split(".")[-1]).strip().title() or title
+                )
+                icon_name = str(matched.get("icon", "")) if matched else app_id
+                accent = str(matched.get("accent", "#22c55e")) if matched else "#22c55e"
+                pid = _find_pid_for_window(app_id, item_id, tracked)
+
+                windows.append(
+                    {
+                        "key": f"wlr:{idx}:{app_id}:{title}",
+                        "appId": app_id,
+                        "title": title or display_name,
+                        "name": display_name,
+                        "itemId": item_id,
+                        "icon": icon_name,
+                        "accent": accent,
+                        "canFocus": True,
+                        "canClose": pid is not None or bool(shutil.which("wmctrl")),
+                        "pid": pid,
+                        "source": "wayland",
+                    }
+                )
+        except Exception:
+            pass
+
+    # Include tracked processes launched via Pi TV that aren't already listed by wlrctl
+    for item_id, pids in tracked.items():
+        running_item_ids.add(item_id)
+        if item_id in matched_item_ids:
+            continue
+        item = items_by_id.get(item_id)
+        if not item:
+            continue
+        windows.append(
+            {
+                "key": f"proc:{item_id}:{pids[-1]}",
+                "appId": Path(item["command"][0]).name if item.get("command") else item_id,
+                "title": item.get("subtitle") or item.get("name") or item_id,
+                "name": item.get("name") or item_id,
+                "itemId": item_id,
+                "icon": item.get("icon", ""),
+                "accent": item.get("accent", "#22c55e"),
+                "canFocus": has_wlrctl,
+                "canClose": True,
+                "pid": pids[-1],
+                "source": "process",
+            }
+        )
+
+    return {
+        "ok": True,
+        "hasWlrctl": has_wlrctl,
+        "windows": windows,
+        "runningItemIds": sorted(running_item_ids),
+    }
+
+
+def handle_window_action(body: dict[str, Any]) -> tuple[bool, str]:
+    action = str(body.get("action", "")).strip()
+    app_id = str(body.get("appId", "")).strip()
+    title = str(body.get("title", "")).strip()
+    item_id = str(body.get("itemId", "") or "").strip() or None
+    pid_raw = body.get("pid")
+    pid = int(pid_raw) if isinstance(pid_raw, int) or (isinstance(pid_raw, str) and pid_raw.isdigit()) else None
+
+    env = get_desktop_env()
+
+    if action == "focus":
+        if not shutil.which("wlrctl"):
+            return False, "wlrctl is not installed"
+        if not app_id and not title:
+            return False, "Missing window identifier"
+        specs = []
+        if app_id:
+            specs.append(f"app_id:{app_id}")
+        if title:
+            specs.append(f"title:{title}")
+        res = subprocess.run(["wlrctl", "toplevel", "focus", *specs], env=env, capture_output=True, text=True, timeout=2.5)
+        if res.returncode != 0 and app_id:
+            # Fallback to app_id-only if window title changed dynamically
+            res = subprocess.run(["wlrctl", "toplevel", "focus", f"app_id:{app_id}"], env=env, capture_output=True, text=True, timeout=2.5)
+        if res.returncode == 0:
+            return True, f"Switched to {title or app_id}"
+        return False, "Window no longer available"
+
+    if action == "minimize":
+        if not shutil.which("wlrctl"):
+            return False, "wlrctl is not installed"
+        specs = [f"app_id:{app_id}"] if app_id else []
+        if title:
+            specs.append(f"title:{title}")
+        res = subprocess.run(["wlrctl", "toplevel", "minimize", *specs], env=env, capture_output=True, text=True, timeout=2.5)
+        return (res.returncode == 0, "Window minimized" if res.returncode == 0 else "Could not minimize window")
+
+    if action == "close":
+        tracked = prune_launched_pids()
+        target_pid = pid if (pid and pid_is_alive(pid) and not is_protected_pid(pid)) else _find_pid_for_window(app_id, item_id, tracked)
+        if target_pid and not is_protected_pid(target_pid):
+            try:
+                pgid = os.getpgid(target_pid)
+                if pgid == target_pid:
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    os.kill(target_pid, signal.SIGTERM)
+                return True, f"Closed {title or app_id}"
+            except ProcessLookupError:
+                return True, "App already closed"
+            except Exception as exc:
+                return False, f"Could not close app: {exc}"
+        if title and shutil.which("wmctrl"):
+            res = subprocess.run(["wmctrl", "-c", title], env=env, capture_output=True, text=True, timeout=2.0)
+            if res.returncode == 0:
+                return True, f"Closed {title}"
+        return False, "Unable to close this window safely"
+
+    return False, f"Unsupported window action: {action}"
+
+
 def launch_item(item_id: str) -> tuple[bool, str]:
     cfg = load_config()
     target = None
@@ -412,7 +727,7 @@ def launch_item(item_id: str) -> tuple[bool, str]:
     env = get_desktop_env()
 
     try:
-        subprocess.Popen(
+        proc = subprocess.Popen(
             cmd,
             cwd=cwd,
             env=env,
@@ -421,6 +736,8 @@ def launch_item(item_id: str) -> tuple[bool, str]:
             stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
+        with _launched_lock:
+            _launched_pids.setdefault(item_id, []).append(proc.pid)
         return True, f"Launched {target.get('name', item_id)}"
     except FileNotFoundError:
         return False, f"Executable not found: {cmd[0]}"
@@ -510,6 +827,10 @@ class PiTVHandler(SimpleHTTPRequestHandler):
             self.send_json(get_system_status())
             return
 
+        if path == "/api/running":
+            self.send_json(get_running_apps())
+            return
+
         if path == "/api/icon":
             icon_name = query.get("name", [""])[0]
             icon_path = resolve_icon_path(icon_name)
@@ -552,6 +873,11 @@ class PiTVHandler(SimpleHTTPRequestHandler):
         if path == "/api/power":
             action = str(body.get("action", "")).strip()
             ok, msg = handle_power_action(action)
+            self.send_json({"ok": ok, "message": msg}, status=HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/window":
+            ok, msg = handle_window_action(body)
             self.send_json({"ok": ok, "message": msg}, status=HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
 

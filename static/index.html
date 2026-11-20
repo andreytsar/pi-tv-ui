@@ -28,6 +28,10 @@
 
       <div class="topbar-right">
         <div class="status-cluster" id="statusCluster" aria-label="System status">
+          <button class="running-pill focusable hidden" id="runningPillBtn" title="Jump to Running Apps">
+            <span class="running-dot"></span>
+            <span id="runningPillLabel">0 Running</span>
+          </button>
           <span class="status-chip" id="netChip" title="Network status">
             <span class="status-dot" id="netDot"></span>
             <span id="netLabel">Online</span>
@@ -78,6 +82,16 @@
         <span><kbd>+ / -</kbd> Volume</span>
         <span><kbd>Esc</kbd> Back / Menu</span>
       </div>
+    </section>
+
+    <!-- Live Running Apps Switcher Bar -->
+    <section class="running-bar hidden" id="runningBar" aria-label="Running background apps">
+      <div class="running-bar-label">
+        <span class="running-dot"></span>
+        <span>Running Apps</span>
+        <span class="running-bar-count" id="runningBarCount">0</span>
+      </div>
+      <div class="running-bar-list" id="runningBarList"></div>
     </section>
 
     <!-- Main Scrollable Sections -->

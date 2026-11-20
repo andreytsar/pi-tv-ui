@@ -27,8 +27,12 @@
   const state = {
     config: null,
     weather: null,
-    // Focus grid: row 0 = topbar controls, rows 1..N = sections
+    runningWindows: [],
+    runningItemIds: new Set(),
+    runningSignature: "",
+    // Focus grid: row 0 = topbar, optional row 1 = running bar, remaining rows = sections
     rows: [],
+    sectionRowOffset: 1,
     rowIndex: 1,
     colIndex: 0,
     lastColPerRow: {},
@@ -181,6 +185,208 @@
     }
   }
 
+  /* ---------- Live Background Running Apps ---------- */
+  function rebuildFocusRows(preserveElement = null) {
+    const pills = Array.from(document.querySelectorAll("#sectionPills .section-pill"));
+    const topbarRow = [...pills];
+    if (!$("runningPillBtn").classList.contains("hidden")) {
+      topbarRow.push($("runningPillBtn"));
+    }
+    topbarRow.push($("volBtn"), $("weatherWidget"), $("settingsBtn"), $("powerBtn"));
+
+    const rows = [topbarRow];
+    const runningControls = Array.from(document.querySelectorAll("#runningBarList .focusable"));
+    if (runningControls.length > 0 && !$("runningBar").classList.contains("hidden")) {
+      rows.push(runningControls);
+      state.sectionRowOffset = 2;
+    } else {
+      state.sectionRowOffset = 1;
+    }
+
+    document.querySelectorAll("#sectionsContainer .tv-section").forEach((secEl, idx) => {
+      const cards = Array.from(secEl.querySelectorAll(".app-card"));
+      if (cards.length > 0) {
+        const targetRow = state.sectionRowOffset + idx;
+        cards.forEach((card, cIdx) => {
+          card.dataset.rowIdx = String(targetRow);
+          card.dataset.colIdx = String(cIdx);
+        });
+        rows.push(cards);
+      }
+    });
+
+    state.rows = rows;
+
+    // Keep focus stable on the exact same element if still present
+    if (preserveElement && document.contains(preserveElement)) {
+      for (let r = 0; r < rows.length; r++) {
+        const c = rows[r].indexOf(preserveElement);
+        if (c !== -1) {
+          state.rowIndex = r;
+          state.colIndex = c;
+          state.lastColPerRow[r] = c;
+          return;
+        }
+      }
+    }
+    state.rowIndex = Math.max(0, Math.min(state.rowIndex, rows.length - 1));
+    const rowLen = rows[state.rowIndex]?.length || 1;
+    state.colIndex = Math.max(0, Math.min(state.colIndex, rowLen - 1));
+  }
+
+  function syncRunningBadges() {
+    document.querySelectorAll(".app-card").forEach((card) => {
+      const isOpen = state.runningItemIds.has(card.dataset.itemId);
+      card.classList.toggle("is-running", isOpen);
+    });
+  }
+
+  async function focusRunningWindow(win) {
+    showToast(`Switching to ${win.name}…`);
+    try {
+      const res = await apiPost("/api/window", {
+        action: "focus",
+        appId: win.appId,
+        title: win.title,
+        itemId: win.itemId,
+        pid: win.pid,
+      });
+      if (!res.ok) {
+        showToast(res.message || "Could not focus window", 3000);
+      }
+    } catch {
+      showToast("Backend unreachable", 3000);
+    }
+  }
+
+  async function closeRunningWindow(win) {
+    showToast(`Closing ${win.name}…`);
+    try {
+      const res = await apiPost("/api/window", {
+        action: "close",
+        appId: win.appId,
+        title: win.title,
+        itemId: win.itemId,
+        pid: win.pid,
+      });
+      showToast(res.message || (res.ok ? `Closed ${win.name}` : "Could not close"), 2600);
+      setTimeout(loadRunningApps, 450);
+    } catch {
+      showToast("Backend unreachable", 3000);
+    }
+  }
+
+  function renderRunningBar() {
+    const bar = $("runningBar");
+    const list = $("runningBarList");
+    const pill = $("runningPillBtn");
+    const wins = state.runningWindows;
+    const prevFocused = state.rows[state.rowIndex]?.[state.colIndex] || null;
+    const wasInRunningBar = prevFocused && prevFocused.closest("#runningBarList");
+
+    list.innerHTML = "";
+    syncRunningBadges();
+
+    if (!wins.length) {
+      bar.classList.add("hidden");
+      pill.classList.add("hidden");
+      rebuildFocusRows(wasInRunningBar ? null : prevFocused);
+      if (wasInRunningBar && !state.activeModal) {
+        focusPosition(Math.min(state.sectionRowOffset, state.rows.length - 1), 0);
+      }
+      return;
+    }
+
+    pill.classList.remove("hidden");
+    $("runningPillLabel").textContent = `${wins.length} Running`;
+    $("runningBarCount").textContent = String(wins.length);
+    bar.classList.remove("hidden");
+
+    wins.forEach((win) => {
+      const group = document.createElement("div");
+      group.className = "running-item-group";
+
+      const chip = document.createElement("button");
+      chip.className = "running-chip focusable";
+      chip.dataset.runningKey = win.key;
+      chip.title = `Switch to ${win.name} — ${win.title}`;
+
+      if (win.icon && win.icon !== "youtube") {
+        const img = document.createElement("img");
+        img.className = "running-chip-icon";
+        img.alt = "";
+        img.src = `/api/icon?name=${encodeURIComponent(win.icon)}`;
+        img.onerror = () => {
+          const fb = document.createElement("span");
+          fb.className = "running-chip-fallback";
+          fb.textContent = (win.name || "?").slice(0, 2).toUpperCase();
+          img.replaceWith(fb);
+        };
+        chip.appendChild(img);
+      } else {
+        const fb = document.createElement("span");
+        fb.className = "running-chip-fallback";
+        fb.textContent = (win.name || "?").slice(0, 2).toUpperCase();
+        chip.appendChild(fb);
+      }
+
+      const textWrap = document.createElement("span");
+      textWrap.className = "running-chip-text";
+      const nameEl = document.createElement("span");
+      nameEl.className = "running-chip-name";
+      nameEl.textContent = win.name;
+      const titleEl = document.createElement("span");
+      titleEl.className = "running-chip-title";
+      titleEl.textContent = win.title !== win.name ? win.title : "Open in background";
+      textWrap.appendChild(nameEl);
+      textWrap.appendChild(titleEl);
+      chip.appendChild(textWrap);
+
+      chip.addEventListener("click", () => focusRunningWindow(win));
+      group.appendChild(chip);
+
+      if (win.canClose) {
+        const closeBtn = document.createElement("button");
+        closeBtn.className = "running-close-btn focusable";
+        closeBtn.textContent = "✕";
+        closeBtn.title = `Close ${win.name}`;
+        closeBtn.setAttribute("aria-label", `Close ${win.name}`);
+        closeBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          closeRunningWindow(win);
+        });
+        group.appendChild(closeBtn);
+      }
+
+      list.appendChild(group);
+    });
+
+    rebuildFocusRows(wasInRunningBar ? null : prevFocused);
+    if (wasInRunningBar && !state.activeModal) {
+      focusPosition(1, Math.min(state.colIndex, (state.rows[1]?.length || 1) - 1), { scroll: false });
+    }
+  }
+
+  async function loadRunningApps() {
+    try {
+      const data = await apiGet("/api/running");
+      if (!data || !data.ok) return;
+      const wins = data.windows || [];
+      const ids = data.runningItemIds || [];
+      const sig = JSON.stringify({
+        w: wins.map((w) => [w.appId, w.title, w.itemId, w.canClose]),
+        ids,
+      });
+      if (sig === state.runningSignature) return;
+      state.runningSignature = sig;
+      state.runningWindows = wins;
+      state.runningItemIds = new Set(ids);
+      renderRunningBar();
+    } catch {
+      // Ignore transient polling errors
+    }
+  }
+
   /* ---------- Render Sections & Cards ---------- */
   function buildIconNode(item) {
     const wrap = document.createElement("div");
@@ -226,26 +432,19 @@
     containerEl.innerHTML = "";
 
     const sections = cfg.sections || [];
-    const topbarRow = [];
-
     sections.forEach((sec, sIdx) => {
       const pill = document.createElement("button");
       pill.className = "section-pill focusable";
       pill.textContent = sec.title;
-      pill.dataset.jumpSection = String(sIdx + 1);
-      pill.addEventListener("click", () => focusPosition(sIdx + 1, 0));
+      pill.dataset.jumpSection = String(sIdx);
+      pill.addEventListener("click", () => focusPosition(state.sectionRowOffset + sIdx, 0));
       pillsEl.appendChild(pill);
-      topbarRow.push(pill);
     });
-
-    topbarRow.push($("volBtn"), $("weatherWidget"), $("settingsBtn"), $("powerBtn"));
-
-    state.rows = [topbarRow];
 
     sections.forEach((sec, sIdx) => {
       const sectionEl = document.createElement("section");
       sectionEl.className = "tv-section";
-      sectionEl.dataset.sectionIndex = String(sIdx + 1);
+      sectionEl.dataset.sectionIndex = String(sIdx);
 
       const header = document.createElement("div");
       header.className = "section-header";
@@ -259,26 +458,30 @@
       const rowEl = document.createElement("div");
       rowEl.className = "cards-row";
 
-      const cardNodes = [];
-      (sec.items || []).forEach((item, cIdx) => {
+      (sec.items || []).forEach((item) => {
         const card = document.createElement("button");
         card.className = "app-card focusable";
         card.style.setProperty("--card-accent", item.accent || "#38bdf8");
         card.dataset.itemId = item.id;
         card.dataset.sectionTitle = sec.title;
-        card.dataset.rowIdx = String(sIdx + 1);
-        card.dataset.colIdx = String(cIdx);
 
         const top = document.createElement("div");
         top.className = "app-card-top";
         top.appendChild(buildIconNode(item));
 
+        const badges = document.createElement("div");
+        badges.className = "app-card-badges";
         if (item.badge) {
           const badge = document.createElement("span");
           badge.className = "app-badge";
           badge.textContent = item.badge;
-          top.appendChild(badge);
+          badges.appendChild(badge);
         }
+        const runTag = document.createElement("span");
+        runTag.className = "app-card-running-tag";
+        runTag.innerHTML = `<span class="running-dot" style="width:6px;height:6px"></span>OPEN`;
+        badges.appendChild(runTag);
+        top.appendChild(badges);
 
         const bottom = document.createElement("div");
         bottom.className = "app-card-bottom";
@@ -292,24 +495,27 @@
 
         card.addEventListener("mouseenter", () => {
           if (!state.activeModal) {
-            focusPosition(sIdx + 1, cIdx, { scroll: false });
+            const r = Number(card.dataset.rowIdx);
+            const c = Number(card.dataset.colIdx);
+            if (!Number.isNaN(r) && !Number.isNaN(c)) {
+              focusPosition(r, c, { scroll: false });
+            }
           }
         });
         card.addEventListener("click", () => launchTile(item, card));
 
         rowEl.appendChild(card);
-        cardNodes.push(card);
       });
 
       sectionEl.appendChild(rowEl);
       containerEl.appendChild(sectionEl);
-      if (cardNodes.length > 0) {
-        state.rows.push(cardNodes);
-      }
     });
 
+    rebuildFocusRows();
+    syncRunningBadges();
+
     // Focus first item in first section
-    const startRow = state.rows.length > 1 ? 1 : 0;
+    const startRow = state.rows.length > state.sectionRowOffset ? state.sectionRowOffset : 0;
     focusPosition(startRow, 0);
   }
 
@@ -320,9 +526,23 @@
 
   function updateSpotlightForElement(el, rowIdx) {
     // Highlight active section pill
+    const activeSecIdx = rowIdx - state.sectionRowOffset;
     document.querySelectorAll(".section-pill").forEach((pill, i) => {
-      pill.classList.toggle("active", i + 1 === rowIdx);
+      pill.classList.toggle("active", i === activeSecIdx);
     });
+
+    if (el && el.classList.contains("running-chip")) {
+      const win = state.runningWindows.find((w) => w.key === el.dataset.runningKey);
+      if (win) {
+        $("spotlightSection").textContent = "Running in Background";
+        $("spotlightBadge").textContent = "LIVE";
+        $("spotlightTitle").textContent = win.name;
+        $("spotlightSubtitle").textContent = `${win.title} · Press Enter to switch`;
+        document.documentElement.style.setProperty("--accent", win.accent || "#22c55e");
+        document.documentElement.style.setProperty("--accent-glow", `${win.accent || "#22c55e"}66`);
+      }
+      return;
+    }
 
     if (!el || !el.classList.contains("app-card")) return;
 
@@ -335,10 +555,12 @@
     }
     if (!found) return;
 
+    const isOpen = state.runningItemIds.has(found.id);
     $("spotlightSection").textContent = sectionTitle;
-    $("spotlightBadge").textContent = found.badge || "APP";
+    $("spotlightBadge").textContent = isOpen ? "OPEN" : found.badge || "APP";
     $("spotlightTitle").textContent = found.name;
-    $("spotlightSubtitle").textContent = found.subtitle || "Press Enter to launch";
+    $("spotlightSubtitle").textContent =
+      (found.subtitle || "Press Enter to launch") + (isOpen ? " · Already running in background" : "");
 
     if (found.accent) {
       document.documentElement.style.setProperty("--accent", found.accent);
@@ -385,6 +607,8 @@
       const res = await apiPost("/api/launch", { id: item.id });
       if (!res.ok) {
         showToast(`Error: ${res.message || "Could not launch"}`, 3600);
+      } else {
+        setTimeout(loadRunningApps, 900);
       }
     } catch {
       showToast("Backend unreachable", 3200);
@@ -484,6 +708,12 @@
 
   /* ---------- Topbar Button Bindings ---------- */
   function bindStaticControls() {
+    $("runningPillBtn").addEventListener("click", () => {
+      if (state.sectionRowOffset === 2 && state.rows[1]?.length) {
+        focusPosition(1, 0);
+      }
+    });
+
     $("volBtn").addEventListener("click", async () => {
       await apiPost("/api/power", { action: "volume_mute" });
       await loadSystemStatus();
@@ -599,23 +829,23 @@
       focusPosition(prevRow, targetCol);
     } else if (key === "PageDown" || key === "]") {
       e.preventDefault();
-      focusPosition(Math.min(state.rows.length - 1, Math.max(1, state.rowIndex + 1)), 0);
+      focusPosition(Math.min(state.rows.length - 1, Math.max(state.sectionRowOffset, state.rowIndex + 1)), 0);
     } else if (key === "PageUp" || key === "[") {
       e.preventDefault();
-      focusPosition(Math.max(1, state.rowIndex - 1), 0);
+      focusPosition(Math.max(state.sectionRowOffset, state.rowIndex - 1), 0);
     } else if (key === "Home") {
       e.preventDefault();
-      focusPosition(1, 0);
+      focusPosition(state.sectionRowOffset, 0);
     } else if (key === "Enter" || key === " ") {
       e.preventDefault();
       const el = state.rows[state.rowIndex]?.[state.colIndex];
       el?.click();
     } else if (key === "Escape" || key === "Backspace") {
       e.preventDefault();
-      if (state.rowIndex === 1 && state.colIndex === 0) {
+      if (state.rowIndex === state.sectionRowOffset && state.colIndex === 0) {
         openModal("powerModal");
       } else {
-        focusPosition(1, 0);
+        focusPosition(state.sectionRowOffset, 0);
       }
     } else if (key === "+" || key === "=" || key === "AudioVolumeUp") {
       e.preventDefault();
@@ -687,9 +917,10 @@
   /* ---------- Init ---------- */
   async function initApp() {
     state.config = await apiGet("/api/config");
+    state.runningSignature = "";
     renderUI();
     updateClock();
-    await Promise.all([loadWeather(false), loadSystemStatus()]);
+    await Promise.all([loadWeather(false), loadSystemStatus(), loadRunningApps()]);
   }
 
   bindStaticControls();
@@ -707,6 +938,7 @@
     setInterval(updateClock, 1000);
     setInterval(() => loadWeather(false), 10 * 60 * 1000);
     setInterval(loadSystemStatus, 15 * 1000);
+    setInterval(loadRunningApps, 3000);
     requestAnimationFrame(pollGamepads);
   });
 })();
