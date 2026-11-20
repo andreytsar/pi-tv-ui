@@ -343,6 +343,20 @@
           ]
         },
         {
+          "id": "casaos",
+          "name": "CasaOS",
+          "subtitle": "Home Cloud (10.0.0.12)",
+          "icon": "/home/andrey/pi-tv-ui/static/icons/casaos.svg",
+          "accent": "#0284c7",
+          "badge": "WEB",
+          "command": [
+            "/usr/bin/chromium",
+            "--app=http://10.0.0.12",
+            "--class=WebApp-CasaOS",
+            "--start-maximized"
+          ]
+        },
+        {
           "id": "pi-apps",
           "name": "Pi-Apps",
           "subtitle": "Raspberry Pi App Store",
