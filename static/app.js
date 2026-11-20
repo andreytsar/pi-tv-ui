@@ -668,6 +668,21 @@
     requestAnimationFrame(pollGamepads);
   }
 
+  /* ---------- Auto-Hide Mouse Cursor for TV Mode ---------- */
+  let cursorHideTimer = null;
+  function showCursorTemporarily() {
+    document.body.classList.remove("cursor-hidden");
+    clearTimeout(cursorHideTimer);
+    cursorHideTimer = setTimeout(() => {
+      document.body.classList.add("cursor-hidden");
+    }, 3000);
+  }
+
+  function hideCursorNow() {
+    clearTimeout(cursorHideTimer);
+    document.body.classList.add("cursor-hidden");
+  }
+
   /* ---------- Init ---------- */
   async function initApp() {
     state.config = await apiGet("/api/config");
@@ -677,9 +692,17 @@
   }
 
   bindStaticControls();
-  window.addEventListener("keydown", handleNavigationKey);
+  window.addEventListener("mousemove", showCursorTemporarily, { passive: true });
+  window.addEventListener("mousedown", showCursorTemporarily, { passive: true });
+  window.addEventListener("keydown", (e) => {
+    if (e.key.startsWith("Arrow") || e.key === "Enter" || e.key === "Escape") {
+      hideCursorNow();
+    }
+    handleNavigationKey(e);
+  });
 
   initApp().then(() => {
+    showCursorTemporarily();
     setInterval(updateClock, 1000);
     setInterval(() => loadWeather(false), 10 * 60 * 1000);
     setInterval(loadSystemStatus, 15 * 1000);
