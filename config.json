@@ -6,7 +6,7 @@
     "showSeconds": false
   },
   "weather": {
-    "city": "",
+    "city": "Modi'in",
     "latitude": null,
     "longitude": null,
     "unit": "C",
@@ -25,7 +25,12 @@
           "icon": "/home/andrey/Pictures/hdrezka.png",
           "accent": "#e11d48",
           "badge": "WEB",
-          "command": ["chromium", "--app=http://hdrezka.ag", "--class=WebApp-Movies5860", "--start-maximized"]
+          "command": [
+            "chromium",
+            "--app=http://hdrezka.ag",
+            "--class=WebApp-Movies5860",
+            "--start-maximized"
+          ]
         },
         {
           "id": "tv-series",
@@ -34,7 +39,12 @@
           "icon": "/home/andrey/.local/share/ice/icons/TVSeries.png",
           "accent": "#f97316",
           "badge": "WEB",
-          "command": ["chromium", "--app=http://seasonvar.ru", "--class=WebApp-TVSeries6219", "--start-maximized"]
+          "command": [
+            "chromium",
+            "--app=http://seasonvar.ru",
+            "--class=WebApp-TVSeries6219",
+            "--start-maximized"
+          ]
         },
         {
           "id": "youtube",
@@ -43,7 +53,11 @@
           "icon": "youtube",
           "accent": "#ef4444",
           "badge": "WEB",
-          "command": ["chromium", "--app=https://www.youtube.com", "--start-maximized"]
+          "command": [
+            "chromium",
+            "--app=https://www.youtube.com",
+            "--start-maximized"
+          ]
         },
         {
           "id": "vlc",
@@ -52,7 +66,9 @@
           "icon": "vlc",
           "accent": "#ea580c",
           "badge": "APP",
-          "command": ["/usr/bin/vlc"]
+          "command": [
+            "/usr/bin/vlc"
+          ]
         }
       ]
     },
@@ -68,7 +84,9 @@
           "icon": "/home/andrey/games/quake/logo.png",
           "accent": "#b45309",
           "badge": "GAME",
-          "command": ["/home/andrey/games/quake/run.sh"],
+          "command": [
+            "/home/andrey/games/quake/run.sh"
+          ],
           "cwd": "/home/andrey/games/quake"
         },
         {
@@ -78,7 +96,9 @@
           "icon": "dosbox",
           "accent": "#2563eb",
           "badge": "DOS",
-          "command": ["dosbox"]
+          "command": [
+            "dosbox"
+          ]
         },
         {
           "id": "doom",
@@ -87,7 +107,11 @@
           "icon": "chocolate-doom",
           "accent": "#dc2626",
           "badge": "GAME",
-          "command": ["chocolate-doom", "-iwad", "/usr/share/games/doom/doom1.wad"]
+          "command": [
+            "chocolate-doom",
+            "-iwad",
+            "/usr/share/games/doom/doom1.wad"
+          ]
         },
         {
           "id": "freedoom1",
@@ -96,7 +120,9 @@
           "icon": "io.github.freedoom.Phase1",
           "accent": "#16a34a",
           "badge": "GAME",
-          "command": ["freedoom1"]
+          "command": [
+            "freedoom1"
+          ]
         },
         {
           "id": "freedoom2",
@@ -105,7 +131,9 @@
           "icon": "io.github.freedoom.Phase2",
           "accent": "#059669",
           "badge": "GAME",
-          "command": ["freedoom2"]
+          "command": [
+            "freedoom2"
+          ]
         },
         {
           "id": "heretic",
@@ -114,7 +142,11 @@
           "icon": "chocolate-heretic",
           "accent": "#9333ea",
           "badge": "GAME",
-          "command": ["chocolate-heretic", "-iwad", "/usr/games/HERETIC1.WAD"]
+          "command": [
+            "chocolate-heretic",
+            "-iwad",
+            "/usr/games/HERETIC1.WAD"
+          ]
         },
         {
           "id": "hexen",
@@ -123,7 +155,11 @@
           "icon": "chocolate-hexen",
           "accent": "#7c3aed",
           "badge": "GAME",
-          "command": ["chocolate-hexen", "-iwad", "/usr/games/HEXEN.WAD"]
+          "command": [
+            "chocolate-hexen",
+            "-iwad",
+            "/usr/games/HEXEN.WAD"
+          ]
         },
         {
           "id": "supertuxkart",
@@ -132,7 +168,9 @@
           "icon": "supertuxkart",
           "accent": "#0ea5e9",
           "badge": "RACE",
-          "command": ["supertuxkart"]
+          "command": [
+            "supertuxkart"
+          ]
         },
         {
           "id": "supertux2",
@@ -141,7 +179,9 @@
           "icon": "supertux2",
           "accent": "#38bdf8",
           "badge": "GAME",
-          "command": ["supertux2"]
+          "command": [
+            "supertux2"
+          ]
         }
       ]
     },
@@ -157,7 +197,10 @@
           "icon": "beatstreets",
           "accent": "#ec4899",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/beatstreets/beatstreets.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/beatstreets/beatstreets.py"
+          ]
         },
         {
           "id": "cavern",
@@ -166,7 +209,10 @@
           "icon": "cavern",
           "accent": "#06b6d4",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/cavern/cavern.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/cavern/cavern.py"
+          ]
         },
         {
           "id": "bunner",
@@ -175,7 +221,10 @@
           "icon": "bunner",
           "accent": "#84cc16",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/bunner/bunner.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/bunner/bunner.py"
+          ]
         },
         {
           "id": "boing",
@@ -184,7 +233,10 @@
           "icon": "boing",
           "accent": "#3b82f6",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/boing/boing.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/boing/boing.py"
+          ]
         },
         {
           "id": "avenger",
@@ -193,7 +245,10 @@
           "icon": "avenger",
           "accent": "#f59e0b",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/avenger/avenger.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/avenger/avenger.py"
+          ]
         },
         {
           "id": "eggzy",
@@ -202,7 +257,10 @@
           "icon": "eggzy",
           "accent": "#eab308",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/eggzy/eggzy.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/eggzy/eggzy.py"
+          ]
         },
         {
           "id": "kinetix",
@@ -211,7 +269,10 @@
           "icon": "kinetix",
           "accent": "#8b5cf6",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/kinetix/kinetix.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/kinetix/kinetix.py"
+          ]
         },
         {
           "id": "leadingedge",
@@ -220,7 +281,10 @@
           "icon": "leadingedge",
           "accent": "#ef4444",
           "badge": "ARCADE",
-          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/leadingedge/leadingedge.py"]
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/leadingedge/leadingedge.py"
+          ]
         }
       ]
     },
@@ -236,7 +300,10 @@
           "icon": "chromium",
           "accent": "#3b82f6",
           "badge": "APP",
-          "command": ["/usr/bin/chromium", "--start-maximized"]
+          "command": [
+            "/usr/bin/chromium",
+            "--start-maximized"
+          ]
         },
         {
           "id": "firefox",
@@ -245,7 +312,9 @@
           "icon": "firefox",
           "accent": "#f97316",
           "badge": "APP",
-          "command": ["/usr/bin/firefox"]
+          "command": [
+            "/usr/bin/firefox"
+          ]
         },
         {
           "id": "gemini",
@@ -254,7 +323,11 @@
           "icon": "chrome-gdfaincndogidkdcdkhapmbffkckdkhn-Default",
           "accent": "#6366f1",
           "badge": "WEB",
-          "command": ["/usr/bin/chromium", "--profile-directory=Default", "--app-id=gdfaincndogidkdcdkhapmbffkckdkhn"]
+          "command": [
+            "/usr/bin/chromium",
+            "--profile-directory=Default",
+            "--app-id=gdfaincndogidkdcdkhapmbffkckdkhn"
+          ]
         },
         {
           "id": "rpi-connect",
@@ -263,7 +336,11 @@
           "icon": "chrome-oakekafnkhklocjehkjanfpkkommgagj-Default",
           "accent": "#c026d3",
           "badge": "WEB",
-          "command": ["/usr/bin/chromium", "--profile-directory=Default", "--app-id=oakekafnkhklocjehkjanfpkkommgagj"]
+          "command": [
+            "/usr/bin/chromium",
+            "--profile-directory=Default",
+            "--app-id=oakekafnkhklocjehkjanfpkkommgagj"
+          ]
         },
         {
           "id": "pi-apps",
@@ -272,7 +349,9 @@
           "icon": "/home/andrey/pi-apps/icons/logo.png",
           "accent": "#e11d48",
           "badge": "STORE",
-          "command": ["/home/andrey/pi-apps/gui"]
+          "command": [
+            "/home/andrey/pi-apps/gui"
+          ]
         },
         {
           "id": "mission-center",
@@ -281,7 +360,11 @@
           "icon": "io.missioncenter.MissionCenter",
           "accent": "#10b981",
           "badge": "SYS",
-          "command": ["flatpak", "run", "io.missioncenter.MissionCenter"]
+          "command": [
+            "flatpak",
+            "run",
+            "io.missioncenter.MissionCenter"
+          ]
         },
         {
           "id": "terminal",
@@ -290,7 +373,9 @@
           "icon": "utilities-terminal",
           "accent": "#64748b",
           "badge": "SYS",
-          "command": ["x-terminal-emulator"]
+          "command": [
+            "x-terminal-emulator"
+          ]
         }
       ]
     }

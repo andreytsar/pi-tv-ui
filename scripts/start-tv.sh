@@ -22,9 +22,13 @@ if [[ -f "$PREFS_FILE" ]]; then
   sed -i 's/"exited_cleanly":false/"exited_cleanly":true/g; s/"exit_type":"Crashed"/"exit_type":"Normal"/g' "$PREFS_FILE" || true
 fi
 
-# Start backend server if not already listening
+# Ensure backend server is running without spawning a competing instance when systemd manages it
 if ! curl -fsS "${URL}/api/config" >/dev/null 2>&1; then
-  nohup /usr/bin/python3 "${APP_DIR}/server.py" >>"$LOG_FILE" 2>&1 &
+  if [[ -z "${PITV_PORT:-}" ]] && command -v systemctl >/dev/null 2>&1 && systemctl --user cat pi-tv-server.service >/dev/null 2>&1; then
+    systemctl --user start pi-tv-server.service
+  else
+    nohup /usr/bin/python3 "${APP_DIR}/server.py" >>"$LOG_FILE" 2>&1 &
+  fi
   for _ in $(seq 1 30); do
     if curl -fsS "${URL}/api/config" >/dev/null 2>&1; then
       break
