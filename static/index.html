@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pi TV</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient-bg" id="ambientBg">
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-grid"></div>
+  </div>
+
+  <div class="app-shell">
+    <!-- Top TV Header -->
+    <header class="topbar" data-row="topbar">
+      <div class="topbar-left">
+        <div class="brand-badge">
+          <span class="brand-dot"></span>
+          <span id="brandTitle">Pi TV</span>
+        </div>
+        <nav class="section-pills" id="sectionPills" aria-label="Sections"></nav>
+      </div>
+
+      <div class="topbar-right">
+        <div class="status-cluster" id="statusCluster" aria-label="System status">
+          <span class="status-chip" id="netChip" title="Network status">
+            <span class="status-dot" id="netDot"></span>
+            <span id="netLabel">Online</span>
+          </span>
+          <span class="status-chip" id="tempChip" title="Raspberry Pi CPU temperature">--°C</span>
+          <button class="icon-btn focusable" id="volBtn" data-action="volume_mute" title="Toggle Mute (M)">
+            <span class="btn-icon" id="volIcon">🔊</span>
+            <span class="btn-text" id="volLabel">--%</span>
+          </button>
+        </div>
+
+        <button class="weather-widget focusable" id="weatherWidget" data-action="open_weather" title="Weather forecast & location">
+          <div class="weather-icon" id="weatherIcon">⛅</div>
+          <div class="weather-info">
+            <div class="weather-main">
+              <span class="weather-temp" id="weatherTemp">--°</span>
+              <span class="weather-cond" id="weatherCond">Loading…</span>
+            </div>
+            <div class="weather-city" id="weatherCity">Detecting location</div>
+          </div>
+        </button>
+
+        <div class="clock-widget">
+          <div class="clock-time" id="clockTime">--:--</div>
+          <div class="clock-date" id="clockDate">---</div>
+        </div>
+
+        <div class="topbar-actions">
+          <button class="icon-btn focusable" id="settingsBtn" data-action="open_settings" title="Settings">⚙️</button>
+          <button class="icon-btn danger focusable" id="powerBtn" data-action="open_power" title="Power & Exit Kiosk">⏻</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Spotlight Bar -->
+    <section class="spotlight" id="spotlight">
+      <div class="spotlight-content">
+        <div class="spotlight-meta">
+          <span class="spotlight-section" id="spotlightSection">Welcome</span>
+          <span class="spotlight-badge" id="spotlightBadge">READY</span>
+        </div>
+        <h1 class="spotlight-title" id="spotlightTitle">Pi TV</h1>
+        <p class="spotlight-subtitle" id="spotlightSubtitle">Use arrow keys to browse sections and press Enter to launch.</p>
+      </div>
+      <div class="spotlight-hints">
+        <span><kbd>▲▼◀▶</kbd> Navigate</span>
+        <span><kbd>Enter</kbd> Launch</span>
+        <span><kbd>+ / -</kbd> Volume</span>
+        <span><kbd>Esc</kbd> Back / Menu</span>
+      </div>
+    </section>
+
+    <!-- Main Scrollable Sections -->
+    <main class="sections-container" id="sectionsContainer"></main>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Weather Details Modal -->
+  <div class="modal-backdrop hidden" id="weatherModal" role="dialog" aria-modal="true" aria-labelledby="weatherModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="weatherModalTitle">Local Weather</h2>
+        <button class="modal-close focusable" data-close-modal="weatherModal">✕</button>
+      </div>
+      <div class="weather-modal-body" id="weatherModalBody"></div>
+      <div class="modal-footer">
+        <button class="btn primary focusable" id="refreshWeatherBtn">Refresh Now</button>
+        <button class="btn focusable" id="weatherToSettingsBtn">Change City / Unit</button>
+        <button class="btn focusable" data-close-modal="weatherModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-backdrop hidden" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="settingsModalTitle">TV Settings</h2>
+        <button class="modal-close focusable" data-close-modal="settingsModal">✕</button>
+      </div>
+      <form id="settingsForm" class="settings-form">
+        <label class="field">
+          <span>Weather City (leave empty for Auto IP)</span>
+          <input type="text" id="inputCity" placeholder="e.g. Tel Aviv, Jerusalem, London" class="focusable" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>Temperature Unit</span>
+            <select id="inputUnit" class="focusable">
+              <option value="C">Celsius (°C)</option>
+              <option value="F">Fahrenheit (°F)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Clock Format</span>
+            <select id="inputClock24" class="focusable">
+              <option value="true">24-Hour (20:30)</option>
+              <option value="false">12-Hour (8:30 PM)</option>
+            </select>
+          </label>
+        </div>
+        <label class="field checkbox-field">
+          <input type="checkbox" id="inputShowSeconds" class="focusable" />
+          <span>Show seconds on clock</span>
+        </label>
+        <p class="settings-note">Tip: Edit <code>~/pi-tv-ui/config.json</code> to add, remove, or reorder apps and games.</p>
+        <div class="modal-footer">
+          <button type="submit" class="btn primary focusable">Save &amp; Apply</button>
+          <button type="button" class="btn focusable" id="reloadConfigBtn">Reload config.json</button>
+          <button type="button" class="btn focusable" data-close-modal="settingsModal">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Power & Kiosk Modal -->
+  <div class="modal-backdrop hidden" id="powerModal" role="dialog" aria-modal="true" aria-labelledby="powerModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="powerModalTitle">System &amp; Kiosk Controls</h2>
+        <button class="modal-close focusable" data-close-modal="powerModal">✕</button>
+      </div>
+      <div class="power-grid">
+        <button class="power-tile focusable" data-power="exit_kiosk">
+          <span class="power-icon">🖥️</span>
+          <span class="power-label">Exit to Desktop</span>
+          <span class="power-desc">Close kiosk window</span>
+        </button>
+        <button class="power-tile focusable" data-power="reload_ui">
+          <span class="power-icon">🔄</span>
+          <span class="power-label">Reload TV UI</span>
+          <span class="power-desc">Refresh apps &amp; weather</span>
+        </button>
+        <button class="power-tile warn focusable" data-power="reboot">
+          <span class="power-icon">🔁</span>
+          <span class="power-label">Reboot Pi</span>
+          <span class="power-desc">Restart Raspberry Pi</span>
+        </button>
+        <button class="power-tile danger focusable" data-power="shutdown">
+          <span class="power-icon">⏻</span>
+          <span class="power-label">Power Off</span>
+          <span class="power-desc">Safely shut down Pi</span>
+        </button>
+      </div>
+      <div class="modal-footer">
+        <button class="btn focusable" data-close-modal="powerModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

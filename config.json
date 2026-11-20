@@ -1,0 +1,298 @@
+{
+  "title": "Pi TV",
+  "port": 8787,
+  "clock": {
+    "hour24": true,
+    "showSeconds": false
+  },
+  "weather": {
+    "city": "",
+    "latitude": null,
+    "longitude": null,
+    "unit": "C",
+    "refreshMinutes": 15
+  },
+  "sections": [
+    {
+      "id": "media",
+      "title": "Media & Streaming",
+      "icon": "tv",
+      "items": [
+        {
+          "id": "movies",
+          "name": "Movies",
+          "subtitle": "HDRezka Web App",
+          "icon": "/home/andrey/Pictures/hdrezka.png",
+          "accent": "#e11d48",
+          "badge": "WEB",
+          "command": ["chromium", "--app=http://hdrezka.ag", "--class=WebApp-Movies5860", "--start-maximized"]
+        },
+        {
+          "id": "tv-series",
+          "name": "TV Series",
+          "subtitle": "Seasonvar Web App",
+          "icon": "/home/andrey/.local/share/ice/icons/TVSeries.png",
+          "accent": "#f97316",
+          "badge": "WEB",
+          "command": ["chromium", "--app=http://seasonvar.ru", "--class=WebApp-TVSeries6219", "--start-maximized"]
+        },
+        {
+          "id": "youtube",
+          "name": "YouTube",
+          "subtitle": "Videos & Live Streams",
+          "icon": "youtube",
+          "accent": "#ef4444",
+          "badge": "WEB",
+          "command": ["chromium", "--app=https://www.youtube.com", "--start-maximized"]
+        },
+        {
+          "id": "vlc",
+          "name": "VLC Player",
+          "subtitle": "Local Videos & Streams",
+          "icon": "vlc",
+          "accent": "#ea580c",
+          "badge": "APP",
+          "command": ["/usr/bin/vlc"]
+        }
+      ]
+    },
+    {
+      "id": "games-retro",
+      "title": "Retro & Action Games",
+      "icon": "gamepad",
+      "items": [
+        {
+          "id": "quake",
+          "name": "Quake",
+          "subtitle": "Quakespasm Engine",
+          "icon": "/home/andrey/games/quake/logo.png",
+          "accent": "#b45309",
+          "badge": "GAME",
+          "command": ["/home/andrey/games/quake/run.sh"],
+          "cwd": "/home/andrey/games/quake"
+        },
+        {
+          "id": "war2",
+          "name": "Warcraft II",
+          "subtitle": "DOSBox Classic RTS",
+          "icon": "dosbox",
+          "accent": "#2563eb",
+          "badge": "DOS",
+          "command": ["dosbox"]
+        },
+        {
+          "id": "doom",
+          "name": "Doom",
+          "subtitle": "Chocolate Doom",
+          "icon": "chocolate-doom",
+          "accent": "#dc2626",
+          "badge": "GAME",
+          "command": ["chocolate-doom", "-iwad", "/usr/share/games/doom/doom1.wad"]
+        },
+        {
+          "id": "freedoom1",
+          "name": "Freedoom 1",
+          "subtitle": "Phase 1 Campaign",
+          "icon": "io.github.freedoom.Phase1",
+          "accent": "#16a34a",
+          "badge": "GAME",
+          "command": ["freedoom1"]
+        },
+        {
+          "id": "freedoom2",
+          "name": "Freedoom 2",
+          "subtitle": "Phase 2 Campaign",
+          "icon": "io.github.freedoom.Phase2",
+          "accent": "#059669",
+          "badge": "GAME",
+          "command": ["freedoom2"]
+        },
+        {
+          "id": "heretic",
+          "name": "Heretic",
+          "subtitle": "Chocolate Heretic",
+          "icon": "chocolate-heretic",
+          "accent": "#9333ea",
+          "badge": "GAME",
+          "command": ["chocolate-heretic", "-iwad", "/usr/games/HERETIC1.WAD"]
+        },
+        {
+          "id": "hexen",
+          "name": "Hexen",
+          "subtitle": "Chocolate Hexen",
+          "icon": "chocolate-hexen",
+          "accent": "#7c3aed",
+          "badge": "GAME",
+          "command": ["chocolate-hexen", "-iwad", "/usr/games/HEXEN.WAD"]
+        },
+        {
+          "id": "supertuxkart",
+          "name": "SuperTuxKart",
+          "subtitle": "3D Kart Racing",
+          "icon": "supertuxkart",
+          "accent": "#0ea5e9",
+          "badge": "RACE",
+          "command": ["supertuxkart"]
+        },
+        {
+          "id": "supertux2",
+          "name": "SuperTux 2",
+          "subtitle": "Classic 2D Platformer",
+          "icon": "supertux2",
+          "accent": "#38bdf8",
+          "badge": "GAME",
+          "command": ["supertux2"]
+        }
+      ]
+    },
+    {
+      "id": "games-arcade",
+      "title": "Arcade Classics",
+      "icon": "sparkles",
+      "items": [
+        {
+          "id": "beatstreets",
+          "name": "Beat Streets",
+          "subtitle": "Side-Scrolling Brawler",
+          "icon": "beatstreets",
+          "accent": "#ec4899",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/beatstreets/beatstreets.py"]
+        },
+        {
+          "id": "cavern",
+          "name": "Cavern",
+          "subtitle": "Retro Platformer",
+          "icon": "cavern",
+          "accent": "#06b6d4",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/cavern/cavern.py"]
+        },
+        {
+          "id": "bunner",
+          "name": "Bunner",
+          "subtitle": "Road-Crossing Arcade",
+          "icon": "bunner",
+          "accent": "#84cc16",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/bunner/bunner.py"]
+        },
+        {
+          "id": "boing",
+          "name": "Boing",
+          "subtitle": "Classic Table Tennis",
+          "icon": "boing",
+          "accent": "#3b82f6",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/boing/boing.py"]
+        },
+        {
+          "id": "avenger",
+          "name": "Avenger",
+          "subtitle": "Space Shooter",
+          "icon": "avenger",
+          "accent": "#f59e0b",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/avenger/avenger.py"]
+        },
+        {
+          "id": "eggzy",
+          "name": "Eggzy",
+          "subtitle": "Action Puzzle",
+          "icon": "eggzy",
+          "accent": "#eab308",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/eggzy/eggzy.py"]
+        },
+        {
+          "id": "kinetix",
+          "name": "Kinetix",
+          "subtitle": "Brick Breaker",
+          "icon": "kinetix",
+          "accent": "#8b5cf6",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/kinetix/kinetix.py"]
+        },
+        {
+          "id": "leadingedge",
+          "name": "Leading Edge",
+          "subtitle": "Retro Racing",
+          "icon": "leadingedge",
+          "accent": "#ef4444",
+          "badge": "ARCADE",
+          "command": ["/usr/bin/pgzrun", "/usr/share/code-the-classics/leadingedge/leadingedge.py"]
+        }
+      ]
+    },
+    {
+      "id": "apps",
+      "title": "Apps & Tools",
+      "icon": "grid",
+      "items": [
+        {
+          "id": "chromium",
+          "name": "Chromium",
+          "subtitle": "Web Browser",
+          "icon": "chromium",
+          "accent": "#3b82f6",
+          "badge": "APP",
+          "command": ["/usr/bin/chromium", "--start-maximized"]
+        },
+        {
+          "id": "firefox",
+          "name": "Firefox",
+          "subtitle": "Web Browser",
+          "icon": "firefox",
+          "accent": "#f97316",
+          "badge": "APP",
+          "command": ["/usr/bin/firefox"]
+        },
+        {
+          "id": "gemini",
+          "name": "Google Gemini",
+          "subtitle": "AI Assistant",
+          "icon": "chrome-gdfaincndogidkdcdkhapmbffkckdkhn-Default",
+          "accent": "#6366f1",
+          "badge": "WEB",
+          "command": ["/usr/bin/chromium", "--profile-directory=Default", "--app-id=gdfaincndogidkdcdkhapmbffkckdkhn"]
+        },
+        {
+          "id": "rpi-connect",
+          "name": "RPi Connect",
+          "subtitle": "Remote Access",
+          "icon": "chrome-oakekafnkhklocjehkjanfpkkommgagj-Default",
+          "accent": "#c026d3",
+          "badge": "WEB",
+          "command": ["/usr/bin/chromium", "--profile-directory=Default", "--app-id=oakekafnkhklocjehkjanfpkkommgagj"]
+        },
+        {
+          "id": "pi-apps",
+          "name": "Pi-Apps",
+          "subtitle": "Raspberry Pi App Store",
+          "icon": "/home/andrey/pi-apps/icons/logo.png",
+          "accent": "#e11d48",
+          "badge": "STORE",
+          "command": ["/home/andrey/pi-apps/gui"]
+        },
+        {
+          "id": "mission-center",
+          "name": "System Monitor",
+          "subtitle": "Mission Center",
+          "icon": "io.missioncenter.MissionCenter",
+          "accent": "#10b981",
+          "badge": "SYS",
+          "command": ["flatpak", "run", "io.missioncenter.MissionCenter"]
+        },
+        {
+          "id": "terminal",
+          "name": "Terminal",
+          "subtitle": "Command Shell",
+          "icon": "utilities-terminal",
+          "accent": "#64748b",
+          "badge": "SYS",
+          "command": ["x-terminal-emulator"]
+        }
+      ]
+    }
+  ]
+}
