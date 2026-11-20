@@ -105,10 +105,11 @@
   function renderWeather() {
     const w = state.weather;
     if (!w || !w.ok) {
+      const isCityError = w?.error && w.error.toLowerCase().includes("not found");
       $("weatherIcon").textContent = "☁️";
       $("weatherTemp").textContent = "--°";
-      $("weatherCond").textContent = w?.error ? "Not found" : "Offline";
-      $("weatherCity").textContent = w?.error || "Click to configure";
+      $("weatherCond").textContent = isCityError ? "City not found" : "Offline";
+      $("weatherCity").textContent = isCityError ? "Click to change city" : "Weather unavailable";
       return;
     }
 
