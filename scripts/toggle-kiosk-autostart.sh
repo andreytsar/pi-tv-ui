@@ -22,6 +22,7 @@ Type=simple
 WorkingDirectory=${APP_DIR}
 Environment=PATH=${HOME}/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
 ExecStart=/usr/bin/python3 ${APP_DIR}/server.py
+KillMode=process
 Restart=on-failure
 RestartSec=2
 

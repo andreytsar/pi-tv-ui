@@ -80,6 +80,8 @@ _weather_cache: dict[str, Any] = {"timestamp": 0.0, "key": None, "data": None}
 _icon_cache: dict[str, Path | None] = {}
 _launched_lock = threading.Lock()
 _launched_pids: dict[str, list[int]] = {}
+_window_pid_cache: dict[str, tuple[float, int | None]] = {}
+_online_cache: dict[str, Any] = {"timestamp": 0.0, "online": False}
 
 PROTECTED_PROCESS_MARKERS = (
     KIOSK_PROFILE_MARKER,
@@ -411,12 +413,18 @@ def get_system_status() -> dict[str, Any]:
         except Exception:
             pass
 
-    online = False
-    try:
-        with socket.create_connection(("1.1.1.1", 53), timeout=1.0):
-            online = True
-    except Exception:
-        pass
+    now = time.time()
+    if (now - _online_cache["timestamp"]) < 30.0:
+        online = bool(_online_cache["online"])
+    else:
+        online = False
+        try:
+            with socket.create_connection(("1.1.1.1", 53), timeout=1.0):
+                online = True
+        except Exception:
+            pass
+        _online_cache["timestamp"] = now
+        _online_cache["online"] = online
 
     return {
         "cpuTempC": cpu_temp_c,
@@ -532,14 +540,9 @@ def _match_window_to_item(app_id: str, title: str, items: list[dict[str, Any]]) 
     return None
 
 
-def _find_pid_for_window(app_id: str, item_id: str | None, tracked: dict[str, list[int]]) -> int | None:
-    if item_id and tracked.get(item_id):
-        return tracked[item_id][-1]
-    aid = app_id.lower().strip()
-    if not aid:
-        return None
+def _snapshot_user_procs() -> list[tuple[int, str]]:
     uid = os.getuid()
-    candidates: list[int] = []
+    procs: list[tuple[int, str]] = []
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
@@ -552,12 +555,34 @@ def _find_pid_for_window(app_id: str, item_id: str | None, tracked: dict[str, li
         except Exception:
             continue
         cmd = get_proc_cmdline(pid).lower()
-        if not cmd:
-            continue
-        # Match binary or --class argument
-        if aid in cmd:
-            candidates.append(pid)
-    return candidates[-1] if candidates else None
+        if cmd:
+            procs.append((pid, cmd))
+    return procs
+
+
+def _find_pid_for_window(
+    app_id: str,
+    item_id: str | None,
+    tracked: dict[str, list[int]],
+    proc_snapshot: list[tuple[int, str]] | None = None,
+) -> int | None:
+    if item_id and tracked.get(item_id):
+        return tracked[item_id][-1]
+    aid = app_id.lower().strip()
+    if not aid:
+        return None
+    now = time.time()
+    cached = _window_pid_cache.get(aid)
+    if cached is not None:
+        ts, cpid = cached
+        if (now - ts) < 15.0:
+            if cpid is None or (pid_is_alive(cpid) and not is_protected_pid(cpid)):
+                return cpid
+    procs = proc_snapshot if proc_snapshot is not None else _snapshot_user_procs()
+    candidates = [pid for pid, cmd in procs if aid in cmd]
+    found = candidates[-1] if candidates else None
+    _window_pid_cache[aid] = (now, found)
+    return found
 
 
 def get_running_apps() -> dict[str, Any]:
@@ -581,6 +606,7 @@ def get_running_apps() -> dict[str, Any]:
                 stderr=subprocess.DEVNULL,
                 timeout=2.0,
             )
+            proc_snapshot: list[tuple[int, str]] | None = None
             for idx, raw_line in enumerate(out.splitlines()):
                 line = raw_line.strip()
                 if not line:
@@ -617,7 +643,14 @@ def get_running_apps() -> dict[str, Any]:
                 )
                 icon_name = str(matched.get("icon", "")) if matched else app_id
                 accent = str(matched.get("accent", "#22c55e")) if matched else "#22c55e"
-                pid = _find_pid_for_window(app_id, item_id, tracked)
+                aid_low = app_id.lower().strip()
+                cached_entry = _window_pid_cache.get(aid_low)
+                needs_proc_scan = not (item_id and tracked.get(item_id)) and (
+                    cached_entry is None or (time.time() - cached_entry[0]) >= 15.0
+                )
+                if needs_proc_scan and proc_snapshot is None:
+                    proc_snapshot = _snapshot_user_procs()
+                pid = _find_pid_for_window(app_id, item_id, tracked, proc_snapshot=proc_snapshot)
 
                 windows.append(
                     {
@@ -1145,7 +1178,11 @@ class PiTVHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format: str, *args: Any) -> None:
-        # Compact server logs
+        # Suppress noisy routine 200 OK background polls to keep systemd journal lean
+        if len(args) >= 2 and str(args[1]) == "200":
+            req = str(args[0])
+            if req.startswith("GET /api/running") or req.startswith("GET /api/system"):
+                return
         sys.stderr.write(f"[pi-tv] {self.address_string()} - {format % args}\n")
 
     def send_json(self, payload: Any, status: int = HTTPStatus.OK) -> None:

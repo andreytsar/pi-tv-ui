@@ -1121,44 +1121,66 @@
     }
   }
 
-  /* ---------- Optional Gamepad Support (D-pad / Stick + A/B) ---------- */
+  /* ---------- Optional Gamepad Support (Event-Driven, 0% Idle CPU) ---------- */
   let lastPadMove = 0;
   let lastButtons = [];
+  let gamepadLoopId = null;
+
+  function hasConnectedGamepad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    return Array.from(pads).some((p) => p && p.connected);
+  }
+
+  function startGamepadLoop() {
+    if (gamepadLoopId !== null || document.hidden || !hasConnectedGamepad()) return;
+    gamepadLoopId = requestAnimationFrame(pollGamepads);
+  }
+
+  function stopGamepadLoop() {
+    if (gamepadLoopId !== null) {
+      cancelAnimationFrame(gamepadLoopId);
+      gamepadLoopId = null;
+    }
+  }
+
   function pollGamepads() {
+    gamepadLoopId = null;
+    if (document.hidden) return;
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const pad = Array.from(pads).find((p) => p && p.connected);
-    if (pad) {
-      const now = performance.now();
-      const axX = pad.axes[0] || 0;
-      const axY = pad.axes[1] || 0;
-      const up = pad.buttons[12]?.pressed || axY < -0.6;
-      const down = pad.buttons[13]?.pressed || axY > 0.6;
-      const left = pad.buttons[14]?.pressed || axX < -0.6;
-      const right = pad.buttons[15]?.pressed || axX > 0.6;
+    if (!pad) return;
 
-      if (now - lastPadMove > 180) {
-        if (up) {
-          handleNavigationKey({ key: "ArrowUp", preventDefault() {} });
-          lastPadMove = now;
-        } else if (down) {
-          handleNavigationKey({ key: "ArrowDown", preventDefault() {} });
-          lastPadMove = now;
-        } else if (left) {
-          handleNavigationKey({ key: "ArrowLeft", preventDefault() {} });
-          lastPadMove = now;
-        } else if (right) {
-          handleNavigationKey({ key: "ArrowRight", preventDefault() {} });
-          lastPadMove = now;
-        }
+    const now = performance.now();
+    const axX = pad.axes[0] || 0;
+    const axY = pad.axes[1] || 0;
+    const up = pad.buttons[12]?.pressed || axY < -0.6;
+    const down = pad.buttons[13]?.pressed || axY > 0.6;
+    const left = pad.buttons[14]?.pressed || axX < -0.6;
+    const right = pad.buttons[15]?.pressed || axX > 0.6;
+
+    if (now - lastPadMove > 180) {
+      if (up) {
+        handleNavigationKey({ key: "ArrowUp", preventDefault() {} });
+        lastPadMove = now;
+      } else if (down) {
+        handleNavigationKey({ key: "ArrowDown", preventDefault() {} });
+        lastPadMove = now;
+      } else if (left) {
+        handleNavigationKey({ key: "ArrowLeft", preventDefault() {} });
+        lastPadMove = now;
+      } else if (right) {
+        handleNavigationKey({ key: "ArrowRight", preventDefault() {} });
+        lastPadMove = now;
       }
-
-      const btnA = Boolean(pad.buttons[0]?.pressed);
-      const btnB = Boolean(pad.buttons[1]?.pressed);
-      if (btnA && !lastButtons[0]) handleNavigationKey({ key: "Enter", preventDefault() {} });
-      if (btnB && !lastButtons[1]) handleNavigationKey({ key: "Escape", preventDefault() {} });
-      lastButtons = [btnA, btnB];
     }
-    requestAnimationFrame(pollGamepads);
+
+    const btnA = Boolean(pad.buttons[0]?.pressed);
+    const btnB = Boolean(pad.buttons[1]?.pressed);
+    if (btnA && !lastButtons[0]) handleNavigationKey({ key: "Enter", preventDefault() {} });
+    if (btnB && !lastButtons[1]) handleNavigationKey({ key: "Escape", preventDefault() {} });
+    lastButtons = [btnA, btnB];
+
+    gamepadLoopId = requestAnimationFrame(pollGamepads);
   }
 
   /* ---------- Auto-Hide Mouse Cursor for TV Mode ---------- */
@@ -1195,12 +1217,42 @@
     handleNavigationKey(e);
   });
 
+  window.addEventListener("gamepadconnected", startGamepadLoop);
+  window.addEventListener("gamepaddisconnected", () => {
+    if (!hasConnectedGamepad()) stopGamepadLoop();
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopGamepadLoop();
+    } else {
+      updateClock();
+      loadSystemStatus();
+      loadRunningApps();
+      startGamepadLoop();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    if (!document.hidden) {
+      loadRunningApps();
+    }
+  });
+
   initApp().then(() => {
     showCursorTemporarily();
-    setInterval(updateClock, 1000);
-    setInterval(() => loadWeather(false), 10 * 60 * 1000);
-    setInterval(loadSystemStatus, 15 * 1000);
-    setInterval(loadRunningApps, 3000);
-    requestAnimationFrame(pollGamepads);
+    setInterval(() => {
+      if (!document.hidden) updateClock();
+    }, 1000);
+    setInterval(() => {
+      if (!document.hidden) loadWeather(false);
+    }, 10 * 60 * 1000);
+    setInterval(() => {
+      if (!document.hidden) loadSystemStatus();
+    }, 15 * 1000);
+    setInterval(() => {
+      if (!document.hidden) loadRunningApps();
+    }, 4000);
+    startGamepadLoop();
   });
 })();
