@@ -60,6 +60,17 @@
           ]
         },
         {
+          "id": "iptv",
+          "name": "IPTV",
+          "subtitle": "Live TV (Hebrew & English)",
+          "icon": "/home/andrey/pi-tv-ui/static/icons/iptv.svg",
+          "accent": "#0ea5e9",
+          "badge": "TV",
+          "command": [
+            "/home/andrey/iptv/launch-iptv.sh"
+          ]
+        },
+        {
           "id": "vlc",
           "name": "VLC Player",
           "subtitle": "Local Videos & Streams",
