@@ -78,6 +78,8 @@
   }
 
   /* ---------- Clock ---------- */
+  let lastClockTimeText = "";
+  let lastClockDateText = "";
   function updateClock() {
     const now = new Date();
     const hour24 = state.config?.clock?.hour24 ?? true;
@@ -90,12 +92,20 @@
     };
     if (showSeconds) timeOpts.second = "2-digit";
 
-    $("clockTime").textContent = now.toLocaleTimeString([], timeOpts);
-    $("clockDate").textContent = now.toLocaleDateString([], {
+    const timeText = now.toLocaleTimeString([], timeOpts);
+    if (timeText !== lastClockTimeText) {
+      lastClockTimeText = timeText;
+      $("clockTime").textContent = timeText;
+    }
+    const dateText = now.toLocaleDateString([], {
       weekday: "short",
       month: "short",
       day: "numeric",
     });
+    if (dateText !== lastClockDateText) {
+      lastClockDateText = dateText;
+      $("clockDate").textContent = dateText;
+    }
   }
 
   /* ---------- Weather ---------- */
@@ -1222,24 +1232,49 @@
     if (!hasConnectedGamepad()) stopGamepadLoop();
   });
 
+  let lastSystemPollAt = 0;
+  let lastRunningPollAt = 0;
+
+  async function pollSystemIfDue(force = false) {
+    if (document.hidden) return;
+    const now = Date.now();
+    const intervalMs = document.hasFocus() ? 15 * 1000 : 60 * 1000;
+    if (!force && now - lastSystemPollAt < intervalMs) return;
+    lastSystemPollAt = now;
+    await loadSystemStatus();
+  }
+
+  async function pollRunningIfDue(force = false) {
+    if (document.hidden) return;
+    const now = Date.now();
+    const intervalMs = document.hasFocus() ? 5000 : 30 * 1000;
+    if (!force && now - lastRunningPollAt < intervalMs) return;
+    lastRunningPollAt = now;
+    await loadRunningApps();
+  }
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       stopGamepadLoop();
     } else {
       updateClock();
-      loadSystemStatus();
-      loadRunningApps();
+      pollSystemIfDue(true);
+      pollRunningIfDue(true);
       startGamepadLoop();
     }
   });
 
   window.addEventListener("focus", () => {
     if (!document.hidden) {
-      loadRunningApps();
+      updateClock();
+      pollRunningIfDue(true);
+      pollSystemIfDue(false);
     }
   });
 
   initApp().then(() => {
+    lastSystemPollAt = Date.now();
+    lastRunningPollAt = Date.now();
     showCursorTemporarily();
     setInterval(() => {
       if (!document.hidden) updateClock();
@@ -1248,11 +1283,11 @@
       if (!document.hidden) loadWeather(false);
     }, 10 * 60 * 1000);
     setInterval(() => {
-      if (!document.hidden) loadSystemStatus();
+      pollSystemIfDue(false);
     }, 15 * 1000);
     setInterval(() => {
-      if (!document.hidden) loadRunningApps();
-    }, 4000);
+      pollRunningIfDue(false);
+    }, 5000);
     startGamepadLoop();
   });
 })();

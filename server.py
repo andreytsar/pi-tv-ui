@@ -75,9 +75,12 @@ WMO_CODES: dict[int, tuple[str, str]] = {
 }
 
 _config_lock = threading.Lock()
+_config_cache: dict[str, Any] = {"sig": None, "data": None, "index": None}
 _weather_lock = threading.Lock()
 _weather_cache: dict[str, Any] = {"timestamp": 0.0, "key": None, "data": None}
 _icon_cache: dict[str, Path | None] = {}
+_which_cache: dict[str, str | None] = {}
+_desktop_env_cache: dict[str, Any] = {"timestamp": 0.0, "env": None}
 _launched_lock = threading.Lock()
 _launched_pids: dict[str, list[int]] = {}
 _window_pid_cache: dict[str, tuple[float, int | None]] = {}
@@ -348,7 +351,22 @@ def resolve_icon_path(icon_name: str) -> Path | None:
     return best
 
 
+def _which_cached(binary: str) -> str | None:
+    cached = _which_cache.get(binary)
+    if cached is not None:
+        return cached
+    found = shutil.which(binary)
+    if found is not None:
+        _which_cache[binary] = found
+    return found
+
+
 def get_desktop_env() -> dict[str, str]:
+    now = time.time()
+    cached_env = _desktop_env_cache.get("env")
+    if cached_env is not None and (now - _desktop_env_cache["timestamp"]) < 30.0:
+        return cached_env
+
     env = os.environ.copy()
     uid = os.getuid()
     runtime_dir = env.get("XDG_RUNTIME_DIR") or f"/run/user/{uid}"
@@ -383,6 +401,10 @@ def get_desktop_env() -> dict[str, str]:
         if bus.exists():
             env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={bus}"
 
+    if env.get("WAYLAND_DISPLAY") and env.get("DBUS_SESSION_BUS_ADDRESS"):
+        _desktop_env_cache["timestamp"] = now
+        _desktop_env_cache["env"] = env
+
     return env
 
 
@@ -397,10 +419,11 @@ def get_system_status() -> dict[str, Any]:
 
     volume = None
     muted = False
-    if shutil.which("wpctl"):
+    wpctl_bin = _which_cached("wpctl")
+    if wpctl_bin:
         try:
             out = subprocess.check_output(
-                ["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"],
+                [wpctl_bin, "get-volume", "@DEFAULT_AUDIO_SINK@"],
                 env=get_desktop_env(),
                 text=True,
                 timeout=1.5,
@@ -518,22 +541,51 @@ def _item_match_tokens(item: dict[str, Any]) -> set[str]:
     return tokens
 
 
-def _match_window_to_item(app_id: str, title: str, items: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _get_running_config_index() -> tuple[str, list[tuple[dict[str, Any], set[str], str, str]], dict[str, dict[str, Any]]]:
+    with _config_lock:
+        st = CONFIG_PATH.stat()
+        sig = (st.st_mtime_ns, st.st_size)
+        if _config_cache["sig"] == sig and _config_cache["index"] is not None:
+            return _config_cache["index"]
+        with CONFIG_PATH.open("r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        tv_title = (cfg.get("title") or "Pi TV").strip().lower()
+        all_items = [item for sec in cfg.get("sections", []) for item in sec.get("items", [])]
+        indexed_items = [
+            (
+                item,
+                _item_match_tokens(item),
+                str(item.get("id", "")).lower(),
+                str(item.get("name", "")).lower(),
+            )
+            for item in all_items
+        ]
+        items_by_id = {str(it.get("id")): it for it in all_items}
+        idx_data = (tv_title, indexed_items, items_by_id)
+        _config_cache["sig"] = sig
+        _config_cache["data"] = cfg
+        _config_cache["index"] = idx_data
+        return idx_data
+
+
+def _match_window_to_item(
+    app_id: str,
+    title: str,
+    indexed_items: list[tuple[dict[str, Any], set[str], str, str]],
+) -> dict[str, Any] | None:
     aid = app_id.lower().strip()
     ttl = title.lower().strip()
     # 1. Exact class / app_id match (highest priority for webapps & native apps)
-    for item in items:
-        tokens = _item_match_tokens(item)
-        if aid and aid in tokens:
-            # Disambiguate chromium webapps by title if generic chromium-browser
-            if aid in ("chromium", "chromium-browser") and item.get("id") != "chromium":
-                continue
-            return item
+    if aid:
+        for item, tokens, _, _ in indexed_items:
+            if aid in tokens:
+                # Disambiguate chromium webapps by title if generic chromium-browser
+                if aid in ("chromium", "chromium-browser") and item.get("id") != "chromium":
+                    continue
+                return item
     # 2. Substring match on app_id or title for webapps/games
-    for item in items:
-        item_name = str(item.get("name", "")).lower()
-        item_id = str(item.get("id", "")).lower()
-        if aid and (item_id in aid or aid in item_id):
+    for item, _, item_id, item_name in indexed_items:
+        if aid and item_id and (item_id in aid or aid in item_id):
             return item
         if item_name and len(item_name) >= 4 and item_name in ttl:
             return item
@@ -542,21 +594,24 @@ def _match_window_to_item(app_id: str, title: str, items: list[dict[str, Any]]) 
 
 def _snapshot_user_procs() -> list[tuple[int, str]]:
     uid = os.getuid()
+    my_pid = os.getpid()
     procs: list[tuple[int, str]] = []
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
+    for entry in os.scandir("/proc"):
+        name = entry.name
+        if not name.isdigit():
             continue
-        pid = int(entry.name)
-        if is_protected_pid(pid):
+        pid = int(name)
+        if pid <= 1 or pid == my_pid:
             continue
         try:
-            if entry.stat().st_uid != uid:
+            if entry.stat(follow_symlinks=False).st_uid != uid:
                 continue
-        except Exception:
+        except OSError:
             continue
-        cmd = get_proc_cmdline(pid).lower()
-        if cmd:
-            procs.append((pid, cmd))
+        cmd = get_proc_cmdline(pid)
+        if not cmd or any(marker in cmd for marker in PROTECTED_PROCESS_MARKERS):
+            continue
+        procs.append((pid, cmd.lower()))
     return procs
 
 
@@ -586,21 +641,20 @@ def _find_pid_for_window(
 
 
 def get_running_apps() -> dict[str, Any]:
-    cfg = load_config()
-    tv_title = (cfg.get("title") or "Pi TV").strip().lower()
-    all_items = [item for sec in cfg.get("sections", []) for item in sec.get("items", [])]
-    items_by_id = {str(it.get("id")): it for it in all_items}
+    tv_title, indexed_items, items_by_id = _get_running_config_index()
     tracked = prune_launched_pids()
 
-    has_wlrctl = bool(shutil.which("wlrctl"))
+    wlrctl_bin = _which_cached("wlrctl")
+    has_wlrctl = bool(wlrctl_bin)
+    has_wmctrl = bool(_which_cached("wmctrl"))
     windows: list[dict[str, Any]] = []
     running_item_ids: set[str] = set()
     matched_item_ids: set[str] = set()
 
-    if has_wlrctl:
+    if wlrctl_bin:
         try:
             out = subprocess.check_output(
-                ["wlrctl", "toplevel", "list"],
+                [wlrctl_bin, "toplevel", "list"],
                 env=get_desktop_env(),
                 text=True,
                 stderr=subprocess.DEVNULL,
@@ -630,7 +684,7 @@ def get_running_apps() -> dict[str, Any]:
                 ):
                     continue
 
-                matched = _match_window_to_item(app_id, title, all_items)
+                matched = _match_window_to_item(app_id, title, indexed_items)
                 item_id = str(matched["id"]) if matched else None
                 if item_id:
                     running_item_ids.add(item_id)
@@ -662,7 +716,7 @@ def get_running_apps() -> dict[str, Any]:
                         "icon": icon_name,
                         "accent": accent,
                         "canFocus": True,
-                        "canClose": pid is not None or bool(shutil.which("wmctrl")),
+                        "canClose": pid is not None or has_wmctrl,
                         "pid": pid,
                         "source": "wayland",
                     }
