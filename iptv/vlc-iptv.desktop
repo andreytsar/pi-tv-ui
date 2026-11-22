@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=IPTV
+GenericName=IPTV Player
+Comment=Watch Hebrew & English Free Public IPTV in SMPlayer (mpv)
+Exec=/home/andrey/pi-tv-ui/iptv/launch-iptv.sh
+TryExec=/usr/bin/smplayer
+Icon=/home/andrey/pi-tv-ui/static/icons/iptv.svg
+Terminal=false
+Type=Application
+Categories=AudioVideo;Player;TV;
+Keywords=IPTV;TV;VLC;Live;Streams;Israel;Hebrew;English;

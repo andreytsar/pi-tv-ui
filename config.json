@@ -67,7 +67,7 @@
           "accent": "#0ea5e9",
           "badge": "TV",
           "command": [
-            "/home/andrey/iptv/launch-iptv.sh"
+            "/home/andrey/pi-tv-ui/iptv/launch-iptv.sh"
           ]
         },
         {

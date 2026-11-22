@@ -2,3 +2,11 @@ __pycache__/
 *.py[cod]
 *.tmp
 .DS_Store
+
+# SMPlayer IPTV ephemeral runtime files
+iptv/smplayer-config/player_info.ini
+iptv/smplayer-config/favorites.m3u8
+iptv/smplayer-config/radio.m3u8
+iptv/smplayer-config/tv.m3u8
+iptv/smplayer-config/themes/Dark/Dark.rcc
+iptv/*.bak
