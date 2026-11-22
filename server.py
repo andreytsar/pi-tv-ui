@@ -7,6 +7,7 @@ import json
 import mimetypes
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
@@ -262,10 +263,16 @@ def resolve_icon_path(icon_name: str) -> Path | None:
         if cached is None or cached.exists():
             return cached
 
-    # Direct absolute file path (only allowed if inside home or /usr/share)
+    # Direct absolute file path (only allowed if inside safe system/home dirs)
     if icon_name.startswith("/"):
         p = Path(icon_name).resolve()
-        allowed_prefixes = [Path.home().resolve(), Path("/usr/share").resolve(), Path("/var/lib/flatpak").resolve()]
+        allowed_prefixes = [
+            Path.home().resolve(),
+            Path("/usr/share").resolve(),
+            Path("/usr/local/share").resolve(),
+            Path("/var/lib/flatpak").resolve(),
+            Path("/opt").resolve(),
+        ]
         if (
             p.is_file()
             and p.suffix.lower() in ALLOWED_ICON_EXTS
@@ -276,9 +283,14 @@ def resolve_icon_path(icon_name: str) -> Path | None:
         _icon_cache[icon_name] = None
         return None
 
-    # Sanitize theme icon name
+    # Sanitize theme icon name (strip explicit extension if .desktop wrote e.g. foo.png)
     if not re.match(r"^[A-Za-z0-9._-]+$", icon_name):
         return None
+    base_name = icon_name
+    for ext in ALLOWED_ICON_EXTS:
+        if base_name.lower().endswith(ext):
+            base_name = base_name[: -len(ext)]
+            break
 
     candidates: list[tuple[int, Path]] = []
     size_rank = {s: i for i, s in enumerate(PREFERRED_SIZES)}
@@ -305,11 +317,11 @@ def resolve_icon_path(icon_name: str) -> Path | None:
                 if not d.is_dir():
                     continue
                 for ext in (".svg", ".png", ".webp", ".jpg"):
-                    candidate = d / f"{icon_name}{ext}"
+                    candidate = d / f"{base_name}{ext}"
                     if candidate.is_file():
                         candidates.append((score_path(candidate), candidate))
         for ext in (".svg", ".png", ".webp", ".jpg", ".xpm"):
-            direct = root / f"{icon_name}{ext}"
+            direct = root / f"{base_name}{ext}"
             if direct.is_file():
                 candidates.append((score_path(direct) + 5, direct))
         if candidates:
@@ -321,7 +333,7 @@ def resolve_icon_path(icon_name: str) -> Path | None:
             if not root.exists():
                 continue
             for ext in ("svg", "png"):
-                for match in root.rglob(f"{icon_name}.{ext}"):
+                for match in root.rglob(f"{base_name}.{ext}"):
                     if match.is_file():
                         candidates.append((score_path(match), match))
                         if len(candidates) >= 8:
@@ -758,6 +770,324 @@ def launch_item(item_id: str) -> tuple[bool, str]:
         return False, f"Launch failed: {exc}"
 
 
+DESKTOP_APP_DIRS = [
+    Path.home() / ".local/share/applications",
+    Path.home() / ".local/share/flatpak/exports/share/applications",
+    Path("/usr/local/share/applications"),
+    Path("/var/lib/flatpak/exports/share/applications"),
+    Path("/usr/share/applications"),
+]
+
+ACCENT_PALETTE = [
+    "#38bdf8",
+    "#f97316",
+    "#10b981",
+    "#a855f7",
+    "#e11d48",
+    "#eab308",
+    "#3b82f6",
+    "#ec4899",
+    "#14b8a6",
+    "#6366f1",
+]
+
+DESKTOP_FIELD_CODES = {"%f", "%F", "%u", "%U", "%d", "%D", "%n", "%N", "%i", "%c", "%k", "%v", "%m"}
+
+
+def _slugify_id(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug[:48] or "app"
+
+
+def _parse_desktop_file(path: Path) -> dict[str, str] | None:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+    in_main = False
+    entry: dict[str, str] = {}
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if stripped == "[Desktop Entry]":
+                in_main = True
+                continue
+            if in_main:
+                break
+            continue
+        if not in_main or "=" not in stripped:
+            continue
+        key, val = stripped.split("=", 1)
+        key = key.strip()
+        val = val.strip()
+        # Only keep unlocalized base keys (avoid Name[fr] etc.)
+        if "[" not in key and key not in entry:
+            entry[key] = val
+    return entry if entry else None
+
+
+def _parse_desktop_exec(exec_str: str, terminal: bool) -> list[str]:
+    try:
+        tokens = shlex.split(exec_str)
+    except ValueError:
+        tokens = exec_str.split()
+    cleaned: list[str] = []
+    for tok in tokens:
+        if tok in DESKTOP_FIELD_CODES:
+            continue
+        # Remove inline field codes like --url=%u while preserving %%
+        tok_sub = re.sub(r"%[fFuUdDnNickvm]", "", tok).replace("%%", "%")
+        if tok_sub:
+            cleaned.append(tok_sub)
+    if not cleaned:
+        return []
+    if terminal:
+        return ["x-terminal-emulator", "-e", *cleaned]
+    return cleaned
+
+
+def _pick_accent(seed: str) -> str:
+    total = sum(ord(ch) for ch in seed)
+    return ACCENT_PALETTE[total % len(ACCENT_PALETTE)]
+
+
+def _normalize_cmd_signature(cmd: list[str]) -> str:
+    if not cmd:
+        return ""
+    ignored_flags = {"--start-maximized", "--started-from-file"}
+    parts = [Path(cmd[0]).name.lower()]
+    for arg in cmd[1:]:
+        a = arg.strip()
+        if not a or a in ignored_flags or a.startswith("--class="):
+            continue
+        parts.append(a.lower())
+    return " ".join(parts)
+
+
+def scan_installed_apps() -> dict[str, Any]:
+    cfg = load_config()
+    sections = cfg.get("sections", [])
+    section_list = [{"id": s.get("id", ""), "title": s.get("title", "")} for s in sections]
+    section_ids = [s["id"] for s in section_list]
+
+    # Build lookup of already-configured items to mark duplicates cleanly
+    existing_by_sig: dict[str, tuple[str, str, str]] = {}
+    existing_by_name: dict[str, tuple[str, str, str]] = {}
+    existing_by_icon: dict[str, tuple[str, str, str]] = {}
+    existing_by_id: dict[str, tuple[str, str, str]] = {}
+    for sec in sections:
+        sec_id = str(sec.get("id", ""))
+        sec_title = str(sec.get("title", ""))
+        for item in sec.get("items", []):
+            item_id = str(item.get("id", ""))
+            info = (item_id, sec_id, sec_title)
+            if item_id:
+                existing_by_id[item_id.lower()] = info
+            name = str(item.get("name", "")).strip().lower()
+            if name:
+                existing_by_name[name] = info
+            icon = str(item.get("icon", "")).strip().lower()
+            if icon and not icon.startswith("/"):
+                existing_by_icon[icon] = info
+            sig = _normalize_cmd_signature(item.get("command") or [])
+            if sig:
+                existing_by_sig[sig] = info
+
+    def pick_default_section(group: str) -> str:
+        if group == "games":
+            for cand in ("games-retro", "games-arcade"):
+                if cand in section_ids:
+                    return cand
+        elif group == "media":
+            if "media" in section_ids:
+                return "media"
+        if "apps" in section_ids:
+            return "apps"
+        return section_ids[-1] if section_ids else ""
+
+    path_env = get_desktop_env().get("PATH", "")
+    seen_filenames: set[str] = set()
+    apps: list[dict[str, Any]] = []
+
+    for root in DESKTOP_APP_DIRS:
+        if not root.is_dir():
+            continue
+        for desktop_file in sorted(root.glob("*.desktop")):
+            fname = desktop_file.name
+            if fname in seen_filenames:
+                continue
+            seen_filenames.add(fname)
+
+            entry = _parse_desktop_file(desktop_file)
+            if not entry:
+                continue
+            if entry.get("Type") != "Application":
+                continue
+            if entry.get("NoDisplay", "").lower() == "true" or entry.get("Hidden", "").lower() == "true":
+                continue
+
+            name = entry.get("Name", "").strip()
+            exec_raw = entry.get("Exec", "").strip()
+            if not name or not exec_raw:
+                continue
+
+            # Skip our own Pi TV kiosk launcher
+            if "pi-tv-ui" in exec_raw or "start-tv.sh" in exec_raw or fname.lower().startswith("pi-tv"):
+                continue
+
+            try_exec = entry.get("TryExec", "").strip()
+            if try_exec and not (Path(try_exec).is_file() or shutil.which(try_exec, path=path_env)):
+                continue
+
+            terminal = entry.get("Terminal", "").lower() == "true"
+            command = _parse_desktop_exec(exec_raw, terminal)
+            if not command:
+                continue
+
+            # Verify executable exists on PATH or as absolute path
+            exe = command[0]
+            if exe != "env" and not (Path(exe).is_file() or shutil.which(exe, path=path_env)):
+                continue
+
+            categories = {c.strip().lower() for c in entry.get("Categories", "").split(";") if c.strip()}
+            is_web = any(a.startswith("--app=") or a.startswith("--app-id=") for a in command[1:])
+            if "game" in categories or "arcade" in categories or "emulator" in categories:
+                group = "games"
+                badge = "GAME"
+            elif categories & {"audiovideo", "video", "audio", "music", "player", "tv"}:
+                group = "media"
+                badge = "MEDIA"
+            else:
+                group = "apps"
+                badge = "WEB" if is_web else ("FLATPAK" if Path(exe).name == "flatpak" else "APP")
+
+            icon = entry.get("Icon", "").strip()
+            subtitle = (entry.get("Comment") or entry.get("GenericName") or "").strip()
+            if len(subtitle) > 72:
+                subtitle = subtitle[:69].rstrip() + "…"
+            if not subtitle:
+                subtitle = "Installed Game" if group == "games" else ("Media App" if group == "media" else "Installed App")
+
+            cwd = entry.get("Path", "").strip()
+            if cwd and not Path(cwd).is_dir():
+                cwd = ""
+
+            stem_id = _slugify_id(desktop_file.stem)
+            cmd_sig = _normalize_cmd_signature(command)
+            matched = (
+                existing_by_sig.get(cmd_sig)
+                or existing_by_name.get(name.lower())
+                or (existing_by_icon.get(icon.lower()) if icon else None)
+                or existing_by_id.get(stem_id)
+                or existing_by_id.get(_slugify_id(name))
+            )
+
+            try:
+                mtime = int(desktop_file.stat().st_mtime)
+            except OSError:
+                mtime = 0
+
+            apps.append(
+                {
+                    "desktopId": fname,
+                    "suggestedId": _slugify_id(name),
+                    "name": name,
+                    "subtitle": subtitle,
+                    "icon": icon,
+                    "accent": _pick_accent(name + fname),
+                    "badge": badge,
+                    "categoryGroup": group,
+                    "suggestedSection": pick_default_section(group),
+                    "command": command,
+                    "cwd": cwd or None,
+                    "mtime": mtime,
+                    "alreadyAdded": matched is not None,
+                    "existingItemId": matched[0] if matched else None,
+                    "addedSectionId": matched[1] if matched else None,
+                    "addedSectionTitle": matched[2] if matched else None,
+                }
+            )
+
+    # Sort: newest installed first within available/added, with case-insensitive name tiebreaker
+    apps.sort(key=lambda a: (a["alreadyAdded"], -a["mtime"], a["name"].lower()))
+    return {"ok": True, "apps": apps, "sections": section_list}
+
+
+def add_app_to_config(body: dict[str, Any]) -> tuple[bool, str, dict[str, Any] | None]:
+    section_id = str(body.get("sectionId", "")).strip()
+    app = body.get("app")
+    if not isinstance(app, dict):
+        return False, "Missing app payload", None
+
+    name = str(app.get("name", "")).strip()[:60]
+    command = app.get("command")
+    if not name:
+        return False, "App name is required", None
+    if not isinstance(command, list) or not command or not all(isinstance(c, str) and c.strip() for c in command):
+        return False, "Invalid launch command", None
+
+    cfg = load_config()
+    sections = cfg.get("sections", [])
+    target_section = next((s for s in sections if s.get("id") == section_id), None)
+    if not target_section:
+        if not sections:
+            return False, "No sections configured", None
+        target_section = sections[-1]
+
+    used_ids = {str(it.get("id", "")).lower() for s in sections for it in s.get("items", [])}
+    base_id = _slugify_id(str(app.get("id") or app.get("suggestedId") or name))
+    new_id = base_id
+    suffix = 2
+    while new_id in used_ids:
+        new_id = f"{base_id}-{suffix}"
+        suffix += 1
+
+    new_item: dict[str, Any] = {
+        "id": new_id,
+        "name": name,
+        "subtitle": str(app.get("subtitle", "")).strip()[:80],
+        "icon": str(app.get("icon", "")).strip(),
+        "accent": str(app.get("accent") or _pick_accent(name)).strip(),
+        "badge": str(app.get("badge") or "APP").strip()[:10].upper(),
+        "command": [str(c) for c in command],
+    }
+    cwd = str(app.get("cwd") or "").strip()
+    if cwd and Path(cwd).is_dir():
+        new_item["cwd"] = cwd
+
+    target_section.setdefault("items", []).append(new_item)
+    save_config(cfg)
+    return True, f"Added {name} to {target_section.get('title', target_section.get('id'))}", {
+        "item": new_item,
+        "sectionId": target_section.get("id"),
+        "sectionTitle": target_section.get("title"),
+        "config": cfg,
+    }
+
+
+def remove_app_from_config(item_id: str) -> tuple[bool, str, dict[str, Any] | None]:
+    target_id = item_id.strip()
+    if not target_id:
+        return False, "Missing app id", None
+    cfg = load_config()
+    removed_name = None
+    for sec in cfg.get("sections", []):
+        items = sec.get("items", [])
+        for idx, it in enumerate(items):
+            if str(it.get("id")) == target_id:
+                removed_name = str(it.get("name", target_id))
+                items.pop(idx)
+                break
+        if removed_name is not None:
+            break
+    if removed_name is None:
+        return False, f"App '{target_id}' not found in config", None
+    save_config(cfg)
+    return True, f"Removed {removed_name}", {"removedId": target_id, "config": cfg}
+
+
 def handle_power_action(action: str) -> tuple[bool, str]:
     env = get_desktop_env()
     if action == "volume_up":
@@ -856,6 +1186,10 @@ class PiTVHandler(SimpleHTTPRequestHandler):
             self.send_json(get_running_apps())
             return
 
+        if path == "/api/installed-apps":
+            self.send_json(scan_installed_apps())
+            return
+
         if path == "/api/icon":
             icon_name = query.get("name", [""])[0]
             icon_path = resolve_icon_path(icon_name)
@@ -904,6 +1238,23 @@ class PiTVHandler(SimpleHTTPRequestHandler):
         if path == "/api/window":
             ok, msg = handle_window_action(body)
             self.send_json({"ok": ok, "message": msg}, status=HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/apps/add":
+            ok, msg, extra = add_app_to_config(body)
+            payload: dict[str, Any] = {"ok": ok, "message": msg}
+            if extra:
+                payload.update(extra)
+            self.send_json(payload, status=HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
+            return
+
+        if path == "/api/apps/remove":
+            item_id = str(body.get("id", "")).strip()
+            ok, msg, extra = remove_app_from_config(item_id)
+            payload = {"ok": ok, "message": msg}
+            if extra:
+                payload.update(extra)
+            self.send_json(payload, status=HTTPStatus.OK if ok else HTTPStatus.BAD_REQUEST)
             return
 
         if path == "/api/settings":

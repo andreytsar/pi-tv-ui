@@ -40,6 +40,10 @@
     modalFocusIndex: 0,
     confirmPowerAction: null,
     toastTimer: null,
+    installedApps: [],
+    appsFilter: "available",
+    appsSearch: "",
+    appsTargetSection: "auto",
   };
 
   const $ = (id) => document.getElementById(id);
@@ -514,9 +518,11 @@
     rebuildFocusRows();
     syncRunningBadges();
 
-    // Focus first item in first section
-    const startRow = state.rows.length > state.sectionRowOffset ? state.sectionRowOffset : 0;
-    focusPosition(startRow, 0);
+    // Focus first item in first section (only when no modal is open)
+    if (!state.activeModal) {
+      const startRow = state.rows.length > state.sectionRowOffset ? state.sectionRowOffset : 0;
+      focusPosition(startRow, 0);
+    }
   }
 
   /* ---------- Spatial Focus Engine ---------- */
@@ -634,6 +640,13 @@
       $("inputUnit").value = state.config?.weather?.unit || "C";
       $("inputClock24").value = String(state.config?.clock?.hour24 ?? true);
       $("inputShowSeconds").checked = Boolean(state.config?.clock?.showSeconds);
+    } else if (modalId === "appsModal") {
+      populateAppsSectionSelect();
+      $("appsSearchInput").value = "";
+      state.appsSearch = "";
+      state.appsFilter = "available";
+      syncAppsFilterTabs();
+      loadInstalledApps();
     } else if (modalId === "powerModal") {
       state.confirmPowerAction = null;
       resetPowerLabels();
@@ -658,17 +671,246 @@
     clearFocusedClass();
     const el = focusables[safeIdx];
     el.classList.add("is-focused");
-    el.focus();
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function closeAllModals(restoreFocus = true) {
-    ["weatherModal", "settingsModal", "powerModal"].forEach((id) => {
+    ["weatherModal", "settingsModal", "appsModal", "powerModal"].forEach((id) => {
       $(id).classList.add("hidden");
     });
     state.activeModal = null;
     state.confirmPowerAction = null;
     if (restoreFocus) {
       focusPosition(state.rowIndex, state.colIndex);
+    }
+  }
+
+  /* ---------- Installed Apps Picker ---------- */
+  function populateAppsSectionSelect() {
+    const sel = $("appsTargetSection");
+    sel.innerHTML = `<option value="auto">Auto (Smart)</option>`;
+    for (const sec of state.config?.sections || []) {
+      const opt = document.createElement("option");
+      opt.value = sec.id;
+      opt.textContent = sec.title;
+      sel.appendChild(opt);
+    }
+    sel.value = state.appsTargetSection || "auto";
+    if (!sel.value) sel.value = "auto";
+  }
+
+  function syncAppsFilterTabs() {
+    document.querySelectorAll("#appsFilterTabs .apps-tab").forEach((tab) => {
+      tab.classList.toggle("active", tab.dataset.appsFilter === state.appsFilter);
+    });
+  }
+
+  function sectionTitleById(secId) {
+    const sec = (state.config?.sections || []).find((s) => s.id === secId);
+    return sec ? sec.title : secId || "Apps & Tools";
+  }
+
+  async function loadInstalledApps() {
+    const list = $("appsPickerList");
+    $("appsModalCount").textContent = "Scanning…";
+    list.innerHTML = `<div class="picker-empty">Scanning installed Raspberry Pi apps &amp; games…</div>`;
+    try {
+      const data = await apiGet("/api/installed-apps");
+      if (!data || !data.ok) {
+        list.innerHTML = `<div class="picker-empty">Could not scan installed apps.</div>`;
+        return;
+      }
+      state.installedApps = data.apps || [];
+      renderInstalledApps();
+    } catch {
+      list.innerHTML = `<div class="picker-empty">Backend unreachable.</div>`;
+    }
+  }
+
+  async function addInstalledApp(app, btnEl) {
+    const chosenSection =
+      state.appsTargetSection && state.appsTargetSection !== "auto"
+        ? state.appsTargetSection
+        : app.suggestedSection;
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const res = await apiPost("/api/apps/add", {
+        sectionId: chosenSection,
+        app: {
+          suggestedId: app.suggestedId,
+          name: app.name,
+          subtitle: app.subtitle,
+          icon: app.icon,
+          accent: app.accent,
+          badge: app.badge,
+          command: app.command,
+          cwd: app.cwd,
+        },
+      });
+      if (!res.ok) {
+        showToast(res.message || "Could not add app", 3200);
+        if (btnEl) btnEl.disabled = false;
+        return;
+      }
+      state.config = res.config;
+      renderUI();
+      app.alreadyAdded = true;
+      app.existingItemId = res.item?.id || app.suggestedId;
+      app.addedSectionId = res.sectionId;
+      app.addedSectionTitle = res.sectionTitle;
+      showToast(res.message || `Added ${app.name}`);
+      renderInstalledApps(true);
+    } catch {
+      showToast("Backend unreachable", 3000);
+      if (btnEl) btnEl.disabled = false;
+    }
+  }
+
+  async function removeInstalledApp(app, btnEl) {
+    if (!app.existingItemId) return;
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const res = await apiPost("/api/apps/remove", { id: app.existingItemId });
+      if (!res.ok) {
+        showToast(res.message || "Could not remove app", 3200);
+        if (btnEl) btnEl.disabled = false;
+        return;
+      }
+      state.config = res.config;
+      renderUI();
+      app.alreadyAdded = false;
+      app.existingItemId = null;
+      app.addedSectionId = null;
+      app.addedSectionTitle = null;
+      showToast(res.message || `Removed ${app.name}`);
+      renderInstalledApps(true);
+    } catch {
+      showToast("Backend unreachable", 3000);
+      if (btnEl) btnEl.disabled = false;
+    }
+  }
+
+  function renderInstalledApps(preserveModalFocus = false) {
+    const list = $("appsPickerList");
+    const q = state.appsSearch.trim().toLowerCase();
+    const filter = state.appsFilter;
+
+    const totalAvailable = state.installedApps.filter((a) => !a.alreadyAdded).length;
+    const totalAdded = state.installedApps.length - totalAvailable;
+    $("appsModalCount").textContent = `${totalAvailable} new · ${totalAdded} on home`;
+
+    const filtered = state.installedApps.filter((app) => {
+      if (filter === "available" && app.alreadyAdded) return false;
+      if (filter === "added" && !app.alreadyAdded) return false;
+      if (filter === "games" && app.categoryGroup !== "games") return false;
+      if (filter === "media" && app.categoryGroup !== "media") return false;
+      if (filter === "apps" && app.categoryGroup !== "apps") return false;
+      if (q) {
+        const hay = `${app.name} ${app.subtitle} ${app.badge} ${(app.command || []).join(" ")}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    list.innerHTML = "";
+    if (!filtered.length) {
+      const msg = q
+        ? `No installed apps matching "${state.appsSearch}".`
+        : filter === "available"
+        ? "All detected apps are already on your home screen."
+        : "No apps found in this category.";
+      list.innerHTML = `<div class="picker-empty">${msg}</div>`;
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    filtered.forEach((app) => {
+      const row = document.createElement("div");
+      row.className = "picker-row" + (app.alreadyAdded ? " is-added" : "");
+
+      const iconWrap = document.createElement("div");
+      iconWrap.className = "picker-icon-wrap";
+      const makeFallback = () => {
+        const fb = document.createElement("span");
+        fb.className = "picker-icon-fallback";
+        fb.textContent = (app.name || "?").slice(0, 2).toUpperCase();
+        iconWrap.appendChild(fb);
+      };
+      if (app.icon) {
+        const img = document.createElement("img");
+        img.className = "picker-icon-img";
+        img.alt = "";
+        img.loading = "lazy";
+        img.src = `/api/icon?name=${encodeURIComponent(app.icon)}`;
+        img.onerror = () => {
+          img.remove();
+          makeFallback();
+        };
+        iconWrap.appendChild(img);
+      } else {
+        makeFallback();
+      }
+      row.appendChild(iconWrap);
+
+      const info = document.createElement("div");
+      info.className = "picker-info";
+
+      const titleLine = document.createElement("div");
+      titleLine.className = "picker-title-line";
+      const nameEl = document.createElement("span");
+      nameEl.className = "picker-name";
+      nameEl.textContent = app.name;
+      titleLine.appendChild(nameEl);
+      if (app.badge) {
+        const badgeEl = document.createElement("span");
+        badgeEl.className = "picker-badge";
+        badgeEl.textContent = app.badge;
+        titleLine.appendChild(badgeEl);
+      }
+      info.appendChild(titleLine);
+
+      const subEl = document.createElement("div");
+      subEl.className = "picker-sub";
+      subEl.textContent = app.subtitle || "";
+      info.appendChild(subEl);
+
+      const metaEl = document.createElement("div");
+      metaEl.className = "picker-meta";
+      if (app.alreadyAdded) {
+        metaEl.textContent = `✓ In ${app.addedSectionTitle || sectionTitleById(app.addedSectionId)}`;
+      } else {
+        const destId =
+          state.appsTargetSection && state.appsTargetSection !== "auto"
+            ? state.appsTargetSection
+            : app.suggestedSection;
+        metaEl.textContent = `→ ${sectionTitleById(destId)}`;
+      }
+      info.appendChild(metaEl);
+      row.appendChild(info);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "picker-action-btn focusable" + (app.alreadyAdded ? " remove" : "");
+      btn.textContent = app.alreadyAdded ? "✕ Remove" : "+ Add";
+      btn.addEventListener("click", () => {
+        if (app.alreadyAdded) {
+          removeInstalledApp(app, btn);
+        } else {
+          addInstalledApp(app, btn);
+        }
+      });
+      row.appendChild(btn);
+
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+
+    if (preserveModalFocus && state.activeModal === "appsModal") {
+      const focusables = getModalFocusables("appsModal");
+      if (focusables.length) {
+        focusModalElement(Math.min(state.modalFocusIndex, focusables.length - 1));
+      }
     }
   }
 
@@ -731,6 +973,26 @@
     });
 
     $("weatherToSettingsBtn").addEventListener("click", () => openModal("settingsModal"));
+    $("openAppsPickerBtn").addEventListener("click", () => openModal("appsModal"));
+    $("rescanAppsBtn").addEventListener("click", () => {
+      loadInstalledApps();
+      showToast("Rescanned installed apps");
+    });
+    $("appsSearchInput").addEventListener("input", (e) => {
+      state.appsSearch = e.target.value;
+      renderInstalledApps(false);
+    });
+    $("appsTargetSection").addEventListener("change", (e) => {
+      state.appsTargetSection = e.target.value;
+      renderInstalledApps(false);
+    });
+    document.querySelectorAll("#appsFilterTabs .apps-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        state.appsFilter = tab.dataset.appsFilter || "available";
+        syncAppsFilterTabs();
+        renderInstalledApps(false);
+      });
+    });
 
     $("reloadConfigBtn").addEventListener("click", async () => {
       closeAllModals(false);
