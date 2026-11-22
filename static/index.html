@@ -6,13 +6,15 @@
   <title>Pi TV</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preload" as="image" href="/bg-mountains.webp" type="image/webp" />
+  <link rel="stylesheet" href="/styles.css?v=2" />
 </head>
 <body>
   <div class="ambient-bg" id="ambientBg">
+    <div class="ambient-photo"></div>
+    <div class="ambient-scrim"></div>
     <div class="ambient-orb orb-1"></div>
     <div class="ambient-orb orb-2"></div>
-    <div class="ambient-grid"></div>
   </div>
 
   <div class="app-shell">

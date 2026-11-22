@@ -684,8 +684,8 @@
   async function runPowerAction(action, tileEl) {
     if (action === "reload_ui") {
       closeAllModals(false);
-      await initApp();
-      showToast("TV UI reloaded");
+      showToast("Reloading TV UI…");
+      window.location.reload();
       return;
     }
 

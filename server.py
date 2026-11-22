@@ -799,8 +799,20 @@ def handle_power_action(action: str) -> tuple[bool, str]:
 
 
 class PiTVHandler(SimpleHTTPRequestHandler):
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        ".webp": "image/webp",
+        ".svg": "image/svg+xml",
+    }
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
+
+    def end_headers(self) -> None:
+        # Ensure Chromium kiosk picks up static UI/wallpaper edits on reload
+        if not getattr(self, "path", "").startswith("/api/"):
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
 
     def log_message(self, format: str, *args: Any) -> None:
         # Compact server logs
