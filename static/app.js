@@ -18,7 +18,7 @@
   };
 
   const FALLBACK_GLYPH = {
-    youtube: `<svg viewBox="0 0 64 46" width="44" height="32" aria-hidden="true"><rect width="64" height="46" rx="12" fill="#ef4444"/><polygon points="26,14 26,32 43,23" fill="#ffffff"/></svg>`,
+    youtube: `<svg viewBox="0 0 64 46" class="app-icon-img" aria-hidden="true"><rect width="64" height="46" rx="12" fill="#ef4444"/><polygon points="26,14 26,32 43,23" fill="#ffffff"/></svg>`,
     vlc: "🎬",
     dosbox: "⚔️",
     "utilities-terminal": ">_",
