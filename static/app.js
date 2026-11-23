@@ -80,6 +80,26 @@
   /* ---------- Clock ---------- */
   let lastClockTimeText = "";
   let lastClockDateText = "";
+  let clockTimer = null;
+
+  function stopClockTimer() {
+    if (clockTimer !== null) {
+      clearTimeout(clockTimer);
+      clockTimer = null;
+    }
+  }
+
+  function scheduleClockTick() {
+    stopClockTimer();
+    if (document.hidden) return;
+    const now = new Date();
+    const showSeconds = state.config?.clock?.showSeconds ?? false;
+    const delayMs = showSeconds
+      ? 1000 - now.getMilliseconds() + 20
+      : (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 50;
+    clockTimer = setTimeout(updateClock, Math.max(50, delayMs));
+  }
+
   function updateClock() {
     const now = new Date();
     const hour24 = state.config?.clock?.hour24 ?? true;
@@ -106,6 +126,7 @@
       lastClockDateText = dateText;
       $("clockDate").textContent = dateText;
     }
+    scheduleClockTick();
   }
 
   /* ---------- Weather ---------- */
@@ -1256,6 +1277,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       stopGamepadLoop();
+      stopClockTimer();
     } else {
       updateClock();
       pollSystemIfDue(true);
@@ -1276,9 +1298,6 @@
     lastSystemPollAt = Date.now();
     lastRunningPollAt = Date.now();
     showCursorTemporarily();
-    setInterval(() => {
-      if (!document.hidden) updateClock();
-    }, 1000);
     setInterval(() => {
       if (!document.hidden) loadWeather(false);
     }, 10 * 60 * 1000);
