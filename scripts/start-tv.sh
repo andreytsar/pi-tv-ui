@@ -51,7 +51,9 @@ EXTRA_FLAGS=(
   "--enable-gpu-rasterization"
   "--ignore-gpu-blocklist"
   "--enable-low-res-tiling"
-  "--num-raster-threads=4"
+  "--num-raster-threads=2"
+  "--disk-cache-dir=/tmp/chromium-cache"
+  "--disk-cache-size=67108864"
   "--disable-dev-shm-usage"
   # Snappy TV remote scrolling & kiosk lock-in
   "--cc-scroll-animation-duration-in-seconds=0.22"
@@ -72,7 +74,7 @@ EXTRA_FLAGS=(
   "--disable-session-crashed-bubble"
   "--password-store=basic"
   "--check-for-update-interval=31536000"
-  "--disable-features=Translate,OptimizationHints,MediaRouter,UseChromeOSDirectVideoDecoder"
+  "--disable-features=Translate,OptimizationHints,OptimizationGuideOnDeviceModel,MediaRouter,UseChromeOSDirectVideoDecoder"
 )
 
 if [[ "${XDG_SESSION_TYPE:-}" == "wayland" || -n "${WAYLAND_DISPLAY:-}" ]]; then
