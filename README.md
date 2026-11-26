@@ -2,6 +2,8 @@
 
 A lightweight, 10-foot Smart TV dashboard for Raspberry Pi OS (`labwc` / Wayland) powered by a zero-dependency Python 3 backend and Chromium Kiosk Mode.
 
+![Pi TV Web UI](docs/screenshot.png)
+
 ## Features
 - **Live Local Clock & Weather** (powered by free Open-Meteo API, auto-location or custom city, °C/°F toggle, 4-day forecast modal).
 - **Organized Sections** pre-populated with your installed Raspberry Pi apps & games:
