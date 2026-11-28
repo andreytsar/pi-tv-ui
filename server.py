@@ -392,6 +392,9 @@ def get_desktop_env() -> dict[str, str]:
                 env["WAYLAND_DISPLAY"] = sock_name
                 break
 
+    if env.get("WAYLAND_DISPLAY"):
+        env["XDG_SESSION_TYPE"] = "wayland"
+
     if not env.get("DISPLAY"):
         if Path("/tmp/.X11-unix/X0").exists():
             env["DISPLAY"] = ":0"
@@ -526,6 +529,15 @@ def _item_match_tokens(item: dict[str, Any]) -> set[str]:
                 app_id = arg.split("=", 1)[1].strip().lower()
                 tokens.add(app_id)
                 tokens.add(f"crx_{app_id}")
+                tokens.add(f"chrome-{app_id}-default")
+            elif arg.startswith("--app="):
+                app_url = arg.split("=", 1)[1].strip()
+                host = urllib.parse.urlparse(app_url).hostname
+                if host:
+                    h = host.lower()
+                    tokens.add(f"chrome-{h}__-default")
+                    tokens.add(f"chrome-{h}_-default")
+                    tokens.add(f"chrome-{h}-default")
             elif arg.endswith(".py"):
                 tokens.add(Path(arg).stem.lower())
     # Friendly aliases for well-known Wayland app_ids

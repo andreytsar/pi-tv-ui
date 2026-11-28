@@ -27,6 +27,7 @@
           "badge": "WEB",
           "command": [
             "chromium",
+            "--ozone-platform=wayland",
             "--app=http://hdrezka.ag",
             "--class=WebApp-Movies5860",
             "--start-maximized"
@@ -41,6 +42,7 @@
           "badge": "WEB",
           "command": [
             "chromium",
+            "--ozone-platform=wayland",
             "--app=http://seasonvar.ru",
             "--class=WebApp-TVSeries6219",
             "--start-maximized"
@@ -55,6 +57,7 @@
           "badge": "WEB",
           "command": [
             "chromium",
+            "--ozone-platform=wayland",
             "--app=https://www.youtube.com",
             "--start-maximized"
           ]
@@ -348,6 +351,7 @@
           "badge": "WEB",
           "command": [
             "/usr/bin/chromium",
+            "--ozone-platform=wayland",
             "--profile-directory=Default",
             "--app-id=gdfaincndogidkdcdkhapmbffkckdkhn"
           ]
@@ -361,6 +365,7 @@
           "badge": "WEB",
           "command": [
             "/usr/bin/chromium",
+            "--ozone-platform=wayland",
             "--profile-directory=Default",
             "--app-id=oakekafnkhklocjehkjanfpkkommgagj"
           ]
@@ -374,6 +379,7 @@
           "badge": "WEB",
           "command": [
             "/usr/bin/chromium",
+            "--ozone-platform=wayland",
             "--app=http://10.0.0.12",
             "--class=WebApp-CasaOS",
             "--start-maximized"
