@@ -193,6 +193,18 @@
           "command": [
             "supertux2"
           ]
+        },
+        {
+          "id": "myriapod",
+          "name": "Myriapod",
+          "subtitle": "Code the Classics Myriapod game",
+          "icon": "myriapod",
+          "accent": "#e11d48",
+          "badge": "GAME",
+          "command": [
+            "/usr/bin/pgzrun",
+            "/usr/share/code-the-classics/myriapod/myriapod.py"
+          ]
         }
       ]
     },
@@ -400,6 +412,17 @@
           "badge": "SYS",
           "command": [
             "x-terminal-emulator"
+          ]
+        },
+        {
+          "id": "visual-studio-code",
+          "name": "Visual Studio Code",
+          "subtitle": "Code Editing. Redefined.",
+          "icon": "vscode",
+          "accent": "#10b981",
+          "badge": "APP",
+          "command": [
+            "/usr/share/code/code"
           ]
         }
       ]
